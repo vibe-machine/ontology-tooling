@@ -1,0 +1,11 @@
+{
+  "name": "@vibe-machine/ontology-tooling",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared operational tooling for collection-vibe-machine ontology repositories.",
+  "scripts": {
+    "check": "node src/cli/ontology-release.mjs --help",
+    "test": "node --test"
+  }
+}

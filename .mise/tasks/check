@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+node src/cli/ontology-release.mjs --help >/dev/null
+echo "check ok"
