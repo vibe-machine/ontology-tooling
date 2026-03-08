@@ -207,6 +207,8 @@ test("executeRelease validate-only runs gates without creating a release commit 
   assert.equal(packageJson.version, "1.0.0");
   const subject = execFileSync("git", ["log", "-1", "--pretty=%s"], { cwd: repoPath, encoding: "utf8" }).trim();
   assert.equal(subject, "Initial fixture");
+  const status = execFileSync("git", ["status", "--porcelain"], { cwd: repoPath, encoding: "utf8" }).trim();
+  assert.equal(status, "");
 });
 
 test("executeRelease performs version rewrite, refresh, validation, commit, and tag", async (t) => {

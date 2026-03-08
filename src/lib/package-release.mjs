@@ -138,6 +138,28 @@ function runPackageScript(repoPath, scriptName) {
   run("npm", ["run", scriptName], { cwd: repoPath });
 }
 
+async function removePath(targetPath) {
+  await fs.rm(targetPath, { recursive: true, force: true });
+}
+
+async function withValidationWorktree(repoPath, callback) {
+  const workspaceRoot = path.dirname(repoPath);
+  const tempRoot = await fs.mkdtemp(path.join(workspaceRoot, ".ontology-release-check-"));
+  const worktreePath = path.join(tempRoot, path.basename(repoPath));
+
+  try {
+    run("git", ["worktree", "add", "--detach", worktreePath, "HEAD"], { cwd: repoPath });
+    return await callback(worktreePath);
+  } finally {
+    try {
+      run("git", ["worktree", "remove", "--force", worktreePath], { cwd: repoPath });
+    } catch {
+      await removePath(worktreePath);
+    }
+    await removePath(tempRoot);
+  }
+}
+
 function buildSummary({ repoPath, packageName, currentVersion, nextVersion, renamePlan, push }) {
   return {
     repoPath,
@@ -170,9 +192,11 @@ export async function executeRelease(options) {
       mode: "validate-only",
     };
 
-    runPackageScript(repoPath, "refresh:package-contract");
-    runPackageScript(repoPath, "validate:bootstrap");
-    runPackageScript(repoPath, "test:typedb-bootstrap");
+    await withValidationWorktree(repoPath, async (worktreePath) => {
+      runPackageScript(worktreePath, "refresh:package-contract");
+      runPackageScript(worktreePath, "validate:bootstrap");
+      runPackageScript(worktreePath, "test:typedb-bootstrap");
+    });
     return summary;
   }
 

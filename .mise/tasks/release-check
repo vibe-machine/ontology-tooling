@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "${1:-}" = "" ]; then
+  echo "usage: mise run release-check -- /abs/or/relative/path/to/ontology-repo" >&2
+  exit 1
+fi
+
+exec node src/cli/ontology-release.mjs --repo "$1" --validate-only

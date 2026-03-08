@@ -9,7 +9,6 @@ This repo should own:
 - release/version/tag automation
 - shared package-contract orchestration
 - reusable validation orchestration
-- shared CI/release workflow helpers
 
 This repo should not own:
 
@@ -20,10 +19,11 @@ This repo should not own:
 ## Execution Model
 
 - `mise.toml` pins the runtime/tooling contract
-- `.mise/tasks/` provides local and CI entrypoints
+- `.mise/tasks/` provides the primary local operator entrypoints
 - `bin/` exposes stable command names
 - `src/cli/` implements commands
 - `src/lib/` holds reusable internal helpers
+- releases are executed from a local workstation or agent environment, not GitHub Actions
 
 ## First Command
 

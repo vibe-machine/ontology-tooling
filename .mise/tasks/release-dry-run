@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "${1:-}" = "" ]; then
+  echo "usage: mise run release-dry-run -- /abs/or/relative/path/to/ontology-repo [patch|minor|major]" >&2
+  exit 1
+fi
+
+repo="$1"
+bump="${2:-patch}"
+
+exec node src/cli/ontology-release.mjs --repo "$repo" --bump "$bump" --dry-run
