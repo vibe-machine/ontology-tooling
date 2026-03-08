@@ -47,6 +47,9 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: write
+
 jobs:
   ontology-release:
     runs-on: ubuntu-latest
@@ -54,6 +57,7 @@ jobs:
       - name: Checkout caller repository
         uses: actions/checkout@v6
         with:
+          fetch-depth: 0
           path: ${{ inputs.target_path || 'target' }}
 
       - name: Checkout ontology-tooling
@@ -61,6 +65,7 @@ jobs:
         with:
           repository: vibe-machine/ontology-tooling
           ref: ${{ inputs.tooling_ref || 'main' }}
+          fetch-depth: 0
           path: ontology-tooling
 
       - name: Install mise and tooling
@@ -68,6 +73,13 @@ jobs:
         with:
           install: true
           cache: true
+
+      - name: Configure git identity for release commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Run shared ontology workflow
         shell: bash
