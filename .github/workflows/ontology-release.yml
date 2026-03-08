@@ -1,0 +1,112 @@
+name: ontology-release
+
+on:
+  workflow_call:
+    inputs:
+      target_path:
+        required: false
+        type: string
+        default: target
+      mode:
+        required: false
+        type: string
+        default: validate-only
+      bump:
+        required: false
+        type: string
+        default: patch
+      explicit_version:
+        required: false
+        type: string
+        default: ""
+      push:
+        required: false
+        type: boolean
+        default: false
+      tooling_ref:
+        required: false
+        type: string
+        default: main
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: validate-only, dry-run, or release
+        required: true
+        default: validate-only
+      bump:
+        description: patch, minor, or major
+        required: true
+        default: patch
+      explicit_version:
+        description: Exact version for release mode
+        required: false
+        default: ""
+      push:
+        description: Push branch and tag in release mode
+        required: true
+        type: boolean
+        default: false
+
+jobs:
+  ontology-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout caller repository
+        uses: actions/checkout@v6
+        with:
+          path: ${{ inputs.target_path || 'target' }}
+
+      - name: Checkout ontology-tooling
+        uses: actions/checkout@v6
+        with:
+          repository: vibe-machine/ontology-tooling
+          ref: ${{ inputs.tooling_ref || 'main' }}
+          path: ontology-tooling
+
+      - name: Install mise and tooling
+        uses: jdx/mise-action@v3
+        with:
+          install: true
+          cache: true
+
+      - name: Run shared ontology workflow
+        shell: bash
+        working-directory: ontology-tooling
+        run: |
+          set -euo pipefail
+
+          target_path="../${{ inputs.target_path || 'target' }}"
+          args=(--repo "$target_path")
+
+          mode="${{ inputs.mode || 'validate-only' }}"
+          explicit_version="${{ inputs.explicit_version || '' }}"
+
+          case "$mode" in
+            validate-only)
+              args+=(--validate-only)
+              ;;
+            dry-run)
+              if [ -n "$explicit_version" ]; then
+                args+=(--version "$explicit_version")
+              else
+                args+=(--bump "${{ inputs.bump || 'patch' }}")
+              fi
+              args+=(--dry-run)
+              ;;
+            release)
+              if [ -n "$explicit_version" ]; then
+                args+=(--version "$explicit_version")
+              else
+                args+=(--bump "${{ inputs.bump || 'patch' }}")
+              fi
+              if [ "${{ inputs.push || false }}" != "true" ]; then
+                args+=(--no-push)
+              fi
+              ;;
+            *)
+              echo "Unsupported mode: $mode" >&2
+              exit 1
+              ;;
+          esac
+
+          mise run release -- "${args[@]}"

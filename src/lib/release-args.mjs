@@ -4,6 +4,7 @@ export function parseReleaseArgs(argv) {
     bump: null,
     version: null,
     dryRun: false,
+    validateOnly: false,
     push: true,
     help: false,
   };
@@ -17,6 +18,10 @@ export function parseReleaseArgs(argv) {
     }
     if (arg === "--dry-run") {
       options.dryRun = true;
+      continue;
+    }
+    if (arg === "--validate-only") {
+      options.validateOnly = true;
       continue;
     }
     if (arg === "--no-push") {
@@ -56,7 +61,11 @@ export function validateReleaseArgs(options) {
     throw new Error("Use either --bump or --version, not both");
   }
 
-  if (!options.bump && !options.version) {
-    throw new Error("A release requires either --bump <patch|minor|major> or --version <x.y.z>");
+  if (options.validateOnly && (options.bump || options.version || options.dryRun)) {
+    throw new Error("Use --validate-only by itself with --repo and optional --no-push");
+  }
+
+  if (!options.validateOnly && !options.bump && !options.version) {
+    throw new Error("A release requires either --bump <patch|minor|major>, --version <x.y.z>, or --validate-only");
   }
 }

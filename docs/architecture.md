@@ -31,6 +31,7 @@ The first production command is `ontology-release`.
 
 Target contract:
 
+0. optionally run validate-only refresh/validation with no git mutation
 1. update package version state
 2. rewrite versioned manifest paths
 3. run package refresh
@@ -40,4 +41,10 @@ Target contract:
 7. create matching git tag
 8. push commit and tag
 
-The current scaffold only establishes the command surface and argument parsing boundary.
+The command expects a target ontology repo to expose:
+
+- `refresh:package-contract`
+- `validate:bootstrap`
+- `test:typedb-bootstrap`
+
+That keeps package-specific generation local while moving the release lifecycle into shared tooling.

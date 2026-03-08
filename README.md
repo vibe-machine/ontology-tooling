@@ -21,12 +21,13 @@ mise run release -- --help
 
 The initial production command planned for this repo is `ontology-release`.
 
-Current foundation work includes:
+Current shared command surface includes:
 
 - `mise` runtime/tool pinning
 - shared repo layout for CLI development
 - task entrypoints under `.mise/tasks`
-- a release-command scaffold with argument parsing and dry-run help
+- a release command that performs shared release orchestration for ontology repos
+- a validate-only mode for non-mutating refresh and validation gates
 
 ## Layout
 
@@ -37,6 +38,12 @@ Current foundation work includes:
 - `tests/` smoke and unit tests
 - `.mise/tasks/` runnable project tasks
 
+## Wrapper Contract
+
+Ontology repos should keep thin wrappers and let `ontology-tooling` own release orchestration.
+
+See [docs/repo-wrapper-pattern.md](docs/repo-wrapper-pattern.md).
+
 ## Status
 
-This is the foundation slice for the `ontology-tooling` roadmap. The actual end-to-end release automation is tracked separately and should be implemented in the next feature slice.
+The foundation slice is in place and `ontology-release` now owns the shared version/refresh/validation/commit/tag flow for repos that expose the standard package-contract scripts.

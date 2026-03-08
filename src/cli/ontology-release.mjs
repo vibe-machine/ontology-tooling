@@ -1,3 +1,4 @@
+import { executeRelease } from "../lib/package-release.mjs";
 import { parseReleaseArgs, validateReleaseArgs } from "../lib/release-args.mjs";
 
 function printHelp() {
@@ -8,13 +9,15 @@ Shared release command for ontology package repositories.
 Usage:
   ontology-release --repo <path> --bump <patch|minor|major> [--dry-run] [--no-push]
   ontology-release --repo <path> --version <x.y.z> [--dry-run] [--no-push]
+  ontology-release --repo <path> --validate-only
 
 Examples:
   ontology-release --repo ../ontology-trace-to-knowledge --bump patch --dry-run
   ontology-release --repo ../ontology-beads --version 0.60.0 --no-push
+  ontology-release --repo ../ontology-trace-to-knowledge --validate-only
 
 Current status:
-  This is the foundation scaffold. End-to-end release mutation is not implemented yet.
+  The command supports dry-run release planning, validate-only gating, and end-to-end release mutation.
 `);
 }
 
@@ -26,20 +29,18 @@ function main() {
   }
 
   validateReleaseArgs(options);
-
-  if (options.dryRun) {
-    console.log("ontology-release dry run");
-    console.log(JSON.stringify(options, null, 2));
-    return;
-  }
-
-  throw new Error(
-    "ontology-release is scaffolded but not implemented yet. Use --dry-run or --help until gist-5y8.2 is complete."
-  );
+  return executeRelease(options).then((summary) => {
+    if (options.dryRun) {
+      console.log("ontology-release dry run");
+    } else {
+      console.log("ontology-release completed");
+    }
+    console.log(JSON.stringify(summary, null, 2));
+  });
 }
 
 try {
-  main();
+  await main();
 } catch (error) {
   console.error(error.message);
   process.exitCode = 1;
