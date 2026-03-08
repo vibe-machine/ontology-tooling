@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+#MISE description="Run the ontology-tooling smoke checks"
 set -euo pipefail
 
 node src/cli/ontology-release.mjs --help >/dev/null

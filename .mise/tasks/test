@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+#MISE description="Run the ontology-tooling test suite"
 set -euo pipefail
 
 node --test
