@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
+#MISE description="Preview the next ontology release without mutating git state"
+#USAGE arg "<repo>" help="Path to the ontology repository to preview"
+#USAGE arg "[bump]" help="Semver bump kind" default="patch" {
+#USAGE   choices "patch" "minor" "major"
+#USAGE }
 set -euo pipefail
 
-if [ "${1:-}" = "" ]; then
-  echo "usage: mise run release-dry-run -- /abs/or/relative/path/to/ontology-repo [patch|minor|major]" >&2
-  exit 1
-fi
-
-repo="$1"
-bump="${2:-patch}"
-
-exec node src/cli/ontology-release.mjs --repo "$repo" --bump "$bump" --dry-run
+exec node src/cli/ontology-release.mjs --repo "${usage_repo?}" --bump "${usage_bump?}" --dry-run

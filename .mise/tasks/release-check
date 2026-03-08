@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
+#MISE description="Validate an ontology repo through refresh and bootstrap checks without committing or tagging"
+#USAGE arg "<repo>" help="Path to the ontology repository to validate"
 set -euo pipefail
 
-if [ "${1:-}" = "" ]; then
-  echo "usage: mise run release-check -- /abs/or/relative/path/to/ontology-repo" >&2
-  exit 1
-fi
-
-exec node src/cli/ontology-release.mjs --repo "$1" --validate-only
+exec node src/cli/ontology-release.mjs --repo "${usage_repo?}" --validate-only

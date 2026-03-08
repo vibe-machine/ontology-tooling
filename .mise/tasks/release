@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+#MISE description="Run ontology-release with passthrough CLI arguments"
+#USAGE arg "[args]" var=#true help="Arguments passed through to ontology-release"
 set -euo pipefail
 
 exec node src/cli/ontology-release.mjs "$@"
