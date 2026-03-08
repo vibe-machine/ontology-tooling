@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Run the ontology-tooling test suite"
+#MISE description="Run the Node test suite, including dry-run, validate-only, commit/tag, and push release flows against fixture repos"
 set -euo pipefail
 
 node --test
