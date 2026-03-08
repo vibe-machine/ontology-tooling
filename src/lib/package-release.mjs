@@ -79,9 +79,15 @@ export function planPackageRelease(packageJson, { bump, version }) {
     });
   }
 
-  if (typeof nextPackageJson.upstream?.tag === "string") {
-    nextPackageJson.upstream.tag = replaceVersionToken(nextPackageJson.upstream.tag, currentVersion, nextVersion);
+  // Rewrite versioned paths inside scripts (e.g. --out manifests/pkg-v1.0.0.json)
+  if (nextPackageJson.scripts) {
+    for (const key of Object.keys(nextPackageJson.scripts)) {
+      nextPackageJson.scripts[key] = replaceVersionToken(nextPackageJson.scripts[key], currentVersion, nextVersion);
+    }
   }
+
+  // NOTE: upstream.* is never rewritten — it is immutable provenance metadata
+  // referring to the source repository, not the package version.
 
   return {
     currentVersion,

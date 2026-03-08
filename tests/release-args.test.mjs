@@ -95,6 +95,59 @@ test("planPackageRelease rewrites versioned manifest references", () => {
   ]);
 });
 
+test("planPackageRelease preserves upstream metadata and rewrites scripts", () => {
+  const plan = planPackageRelease(
+    {
+      name: "gist",
+      version: "14.0.0",
+      manifests: ["manifests/gist-v14.0.0.translation-manifest.json"],
+      provenance: {
+        manifest: "manifests/gist-v14.0.0.translation-manifest.json",
+      },
+      assembly: {
+        generatedArtifacts: [
+          "manifests/gist-v14.0.0.translation-manifest.json",
+          "manifests/gist-v14.0.0.ir-summary.json",
+        ],
+      },
+      upstream: {
+        repo: "https://github.com/semanticarts/gist",
+        tag: "v14.0.0",
+        commit: "6ab80c158a7fa56a1b5d3d824b125b92107e8f08",
+      },
+      scripts: {
+        "parse:ir": "node tools/gist_to_typeql/parse_gist.mjs --out manifests/gist-v14.0.0.ir-summary.json",
+        "refresh:package-contract": "npm run parse:ir && npm run emit:structural",
+        "validate:bootstrap": "node tools/gist_to_typeql/validate_bootstrap.mjs",
+        "test:typedb-bootstrap": "node tools/package_contract/validate_typedb_bootstrap.mjs",
+      },
+    },
+    { bump: null, version: "1.0.0" }
+  );
+
+  assert.equal(plan.nextVersion, "1.0.0");
+
+  // Upstream metadata is immutable provenance — never rewritten
+  assert.equal(plan.nextPackageJson.upstream.tag, "v14.0.0");
+  assert.equal(plan.nextPackageJson.upstream.repo, "https://github.com/semanticarts/gist");
+  assert.equal(plan.nextPackageJson.upstream.commit, "6ab80c158a7fa56a1b5d3d824b125b92107e8f08");
+
+  // Scripts with versioned paths are rewritten
+  assert.equal(
+    plan.nextPackageJson.scripts["parse:ir"],
+    "node tools/gist_to_typeql/parse_gist.mjs --out manifests/gist-v1.0.0.ir-summary.json"
+  );
+
+  // Scripts without versioned paths are unchanged
+  assert.equal(
+    plan.nextPackageJson.scripts["validate:bootstrap"],
+    "node tools/gist_to_typeql/validate_bootstrap.mjs"
+  );
+
+  // Manifests are rewritten
+  assert.equal(plan.nextPackageJson.provenance.manifest, "manifests/gist-v1.0.0.translation-manifest.json");
+});
+
 async function createFixtureRepo(t, { withRemote = false } = {}) {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "ontology-release-"));
   t.after(async () => {
