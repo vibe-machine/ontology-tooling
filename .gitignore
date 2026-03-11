@@ -2,3 +2,4 @@
 .idea/
 node_modules/
 .mise.local.toml
+tests/__pycache__/
