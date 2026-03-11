@@ -2,7 +2,10 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import { validateBootstrapUniqueness } from "./bootstrap-uniqueness.mjs";
 import { resolveReleaseVersion } from "./versions.mjs";
+
+const REQUIRED_RELEASE_SCRIPTS = ["refresh:package-contract", "validate:bootstrap", "test:typedb-bootstrap"];
 
 function run(command, args, { cwd, captureOutput = false } = {}) {
   return execFileSync(command, args, {
@@ -18,6 +21,15 @@ async function readJson(filePath) {
 
 async function writeJson(filePath, value) {
   await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+async function shouldInstallNodeDependencies(repoPath) {
+  const packageJson = await readJson(path.join(repoPath, "package.json"));
+  const dependencyFields = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
+  return dependencyFields.some((field) => {
+    const value = packageJson[field];
+    return value && !Array.isArray(value) && typeof value === "object" && Object.keys(value).length > 0;
+  });
 }
 
 function replaceVersionToken(value, currentVersion, nextVersion) {
@@ -39,8 +51,19 @@ export function planPackageRelease(packageJson, { bump, version }) {
   }
 
   const nextVersion = resolveReleaseVersion(currentVersion, { bump, version });
-  if (nextVersion === currentVersion) {
+  const resumeExistingVersion = version !== null && nextVersion === currentVersion;
+  if (nextVersion === currentVersion && !resumeExistingVersion) {
     throw new Error(`Release version is unchanged: ${currentVersion}`);
+  }
+
+  if (resumeExistingVersion) {
+    return {
+      currentVersion,
+      nextVersion,
+      nextPackageJson: structuredClone(packageJson),
+      renamePlan: [],
+      resumeExistingVersion: true,
+    };
   }
 
   const nextPackageJson = structuredClone(packageJson);
@@ -94,6 +117,7 @@ export function planPackageRelease(packageJson, { bump, version }) {
     nextVersion,
     nextPackageJson,
     renamePlan: dedupeRenames(renamePlan),
+    resumeExistingVersion: false,
   };
 }
 
@@ -117,6 +141,24 @@ async function applyRenamePlan(repoPath, renamePlan) {
   }
 }
 
+async function linkSiblingOntologyRepos(repoPath, worktreePath) {
+  const workspaceRoot = path.dirname(repoPath);
+  const worktreeRoot = path.dirname(worktreePath);
+  const repoName = path.basename(repoPath);
+  const entries = await fs.readdir(workspaceRoot, { withFileTypes: true });
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (!entry.name.startsWith("ontology-")) continue;
+    if (entry.name === repoName) continue;
+
+    const sourcePath = path.join(workspaceRoot, entry.name);
+    const targetPath = path.join(worktreeRoot, entry.name);
+    if (await pathExists(targetPath)) continue;
+    await fs.symlink(sourcePath, targetPath, "dir");
+  }
+}
+
 function assertCleanWorkingTree(repoPath) {
   const output = run("git", ["status", "--porcelain"], { cwd: repoPath, captureOutput: true }).trim();
   if (output) {
@@ -126,7 +168,7 @@ function assertCleanWorkingTree(repoPath) {
 
 function assertReleaseScripts(packageJson) {
   const scripts = packageJson.scripts ?? {};
-  for (const name of ["refresh:package-contract", "validate:bootstrap", "test:typedb-bootstrap"]) {
+  for (const name of REQUIRED_RELEASE_SCRIPTS) {
     if (typeof scripts[name] !== "string" || scripts[name].trim().length === 0) {
       throw new Error(`Target repo is missing required script: ${name}`);
     }
@@ -144,6 +186,32 @@ function runPackageScript(repoPath, scriptName) {
   run("npm", ["run", scriptName], { cwd: repoPath });
 }
 
+function expectedReleaseCommitMessage(packageName, version) {
+  return `Release ${packageName} v${version}`;
+}
+
+function assertHeadMatchesReleaseCommit(repoPath, packageName, version) {
+  const subject = run("git", ["log", "-1", "--pretty=%s"], { cwd: repoPath, captureOutput: true }).trim();
+  const expected = expectedReleaseCommitMessage(packageName, version);
+  if (subject !== expected) {
+    throw new Error(
+      `Cannot resume release for v${version}: HEAD commit is "${subject}", expected "${expected}"`
+    );
+  }
+}
+
+function runReleaseValidation(repoPath) {
+  runPackageScript(repoPath, "refresh:package-contract");
+  return validateBootstrapUniqueness(repoPath).then(() => {
+    runPackageScript(repoPath, "validate:bootstrap");
+    runPackageScript(repoPath, "test:typedb-bootstrap");
+  });
+}
+
+function pushRelease(repoPath, tagName) {
+  run("git", ["push", "--atomic", "origin", "HEAD", `refs/tags/${tagName}`], { cwd: repoPath });
+}
+
 async function removePath(targetPath) {
   await fs.rm(targetPath, { recursive: true, force: true });
 }
@@ -155,6 +223,10 @@ async function withValidationWorktree(repoPath, callback) {
 
   try {
     run("git", ["worktree", "add", "--detach", worktreePath, "HEAD"], { cwd: repoPath });
+    await linkSiblingOntologyRepos(repoPath, worktreePath);
+    if (await shouldInstallNodeDependencies(worktreePath)) {
+      run("npm", ["install", "--no-audit", "--no-fund"], { cwd: worktreePath });
+    }
     return await callback(worktreePath);
   } finally {
     try {
@@ -174,8 +246,9 @@ function buildSummary({ repoPath, packageName, currentVersion, nextVersion, rena
     nextVersion,
     tagName: `v${nextVersion}`,
     push,
+    resumeExistingVersion: false,
     renamedPaths: renamePlan,
-    scripts: ["refresh:package-contract", "validate:bootstrap", "test:typedb-bootstrap"],
+    scripts: REQUIRED_RELEASE_SCRIPTS,
   };
 }
 
@@ -193,15 +266,14 @@ export async function executeRelease(options) {
       nextVersion: null,
       tagName: null,
       push: false,
+      resumeExistingVersion: false,
       renamedPaths: [],
-      scripts: ["refresh:package-contract", "validate:bootstrap", "test:typedb-bootstrap"],
+      scripts: REQUIRED_RELEASE_SCRIPTS,
       mode: "validate-only",
     };
 
     await withValidationWorktree(repoPath, async (worktreePath) => {
-      runPackageScript(worktreePath, "refresh:package-contract");
-      runPackageScript(worktreePath, "validate:bootstrap");
-      runPackageScript(worktreePath, "test:typedb-bootstrap");
+      await runReleaseValidation(worktreePath);
     });
     return summary;
   }
@@ -216,6 +288,7 @@ export async function executeRelease(options) {
     push: options.push,
   });
   summary.mode = options.dryRun ? "dry-run" : "release";
+  summary.resumeExistingVersion = plan.resumeExistingVersion;
 
   if (options.dryRun) {
     return summary;
@@ -224,20 +297,25 @@ export async function executeRelease(options) {
   assertCleanWorkingTree(repoPath);
   assertTagDoesNotExist(repoPath, summary.tagName);
 
-  await writeJson(packageJsonPath, plan.nextPackageJson);
-  await applyRenamePlan(repoPath, plan.renamePlan);
+  if (plan.resumeExistingVersion) {
+    assertHeadMatchesReleaseCommit(repoPath, packageJson.name, plan.nextVersion);
+    await withValidationWorktree(repoPath, async (worktreePath) => {
+      await runReleaseValidation(worktreePath);
+    });
+  } else {
+    await writeJson(packageJsonPath, plan.nextPackageJson);
+    await applyRenamePlan(repoPath, plan.renamePlan);
 
-  runPackageScript(repoPath, "refresh:package-contract");
-  runPackageScript(repoPath, "validate:bootstrap");
-  runPackageScript(repoPath, "test:typedb-bootstrap");
+    await runReleaseValidation(repoPath);
 
-  run("git", ["add", "-A"], { cwd: repoPath });
-  run("git", ["commit", "-m", `Release ${packageJson.name} v${plan.nextVersion}`], { cwd: repoPath });
+    run("git", ["add", "-A"], { cwd: repoPath });
+    run("git", ["commit", "-m", expectedReleaseCommitMessage(packageJson.name, plan.nextVersion)], { cwd: repoPath });
+  }
+
   run("git", ["tag", summary.tagName], { cwd: repoPath });
 
   if (options.push) {
-    run("git", ["push"], { cwd: repoPath });
-    run("git", ["push", "origin", summary.tagName], { cwd: repoPath });
+    pushRelease(repoPath, summary.tagName);
   }
 
   return summary;

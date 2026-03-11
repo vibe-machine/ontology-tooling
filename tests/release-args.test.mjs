@@ -148,6 +148,33 @@ test("planPackageRelease preserves upstream metadata and rewrites scripts", () =
   assert.equal(plan.nextPackageJson.provenance.manifest, "manifests/gist-v1.0.0.translation-manifest.json");
 });
 
+test("planPackageRelease supports resuming a release when the explicit version matches package.json", () => {
+  const packageJson = {
+    name: "gist",
+    version: "1.0.3",
+    manifests: ["manifests/gist-v1.0.3.translation-manifest.json"],
+    provenance: {
+      manifest: "manifests/gist-v1.0.3.translation-manifest.json",
+    },
+    assembly: {
+      generatedArtifacts: ["manifests/gist-v1.0.3.translation-manifest.json"],
+    },
+    scripts: {
+      "refresh:package-contract": "node tools/package_contract/refresh_package_contract.mjs",
+      "validate:bootstrap": "node tools/package_contract/validate_bootstrap.mjs",
+      "test:typedb-bootstrap": "node tools/package_contract/validate_typedb_bootstrap.mjs",
+    },
+  };
+
+  const plan = planPackageRelease(packageJson, { bump: null, version: "1.0.3" });
+
+  assert.equal(plan.currentVersion, "1.0.3");
+  assert.equal(plan.nextVersion, "1.0.3");
+  assert.equal(plan.resumeExistingVersion, true);
+  assert.deepEqual(plan.renamePlan, []);
+  assert.deepEqual(plan.nextPackageJson, packageJson);
+});
+
 async function createFixtureRepo(t, { withRemote = false } = {}) {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "ontology-release-"));
   t.after(async () => {
@@ -280,6 +307,37 @@ test("executeRelease performs version rewrite, refresh, validation, commit, and 
   assert.equal(tags, "v1.0.1");
   const subject = execFileSync("git", ["log", "-1", "--pretty=%s"], { cwd: repoPath, encoding: "utf8" }).trim();
   assert.equal(subject, "Release fixture-package v1.0.1");
+});
+
+test("executeRelease can resume a missing tag for an existing release commit", async (t) => {
+  const { repoPath } = await createFixtureRepo(t);
+  await executeRelease({ repo: repoPath, bump: "patch", version: null, dryRun: false, push: false });
+  execFileSync("git", ["tag", "-d", "v1.0.1"], { cwd: repoPath, stdio: "ignore" });
+
+  const summary = await executeRelease({ repo: repoPath, bump: null, version: "1.0.1", dryRun: false, push: false });
+
+  assert.equal(summary.mode, "release");
+  assert.equal(summary.nextVersion, "1.0.1");
+  assert.equal(summary.resumeExistingVersion, true);
+  const tags = execFileSync("git", ["tag", "--list"], { cwd: repoPath, encoding: "utf8" }).trim();
+  assert.equal(tags, "v1.0.1");
+  const subject = execFileSync("git", ["log", "-1", "--pretty=%s"], { cwd: repoPath, encoding: "utf8" }).trim();
+  assert.equal(subject, "Release fixture-package v1.0.1");
+});
+
+test("executeRelease refuses to resume a missing tag when HEAD is not the release commit", async (t) => {
+  const { repoPath } = await createFixtureRepo(t);
+  const packageJsonPath = path.join(repoPath, "package.json");
+  const packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf8"));
+  packageJson.version = "1.0.1";
+  await fs.writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
+  execFileSync("git", ["add", "package.json"], { cwd: repoPath, stdio: "ignore" });
+  execFileSync("git", ["commit", "-m", "Bump version manually"], { cwd: repoPath, stdio: "ignore" });
+
+  await assert.rejects(
+    executeRelease({ repo: repoPath, bump: null, version: "1.0.1", dryRun: false, push: false }),
+    /Cannot resume release/
+  );
 });
 
 test("executeRelease pushes the release commit and tag when push is enabled", async (t) => {
