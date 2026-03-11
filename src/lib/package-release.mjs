@@ -7,6 +7,7 @@ import { validateMigrationContract } from "./migration-contract.mjs";
 import { resolveReleaseVersion } from "./versions.mjs";
 
 const REQUIRED_RELEASE_SCRIPTS = ["refresh:package-contract", "validate:bootstrap", "test:typedb-bootstrap"];
+const OPTIONAL_RELEASE_SCRIPTS = ["test:typedb-migration"];
 
 function run(command, args, { cwd, captureOutput = false } = {}) {
   return execFileSync(command, args, {
@@ -187,6 +188,14 @@ function runPackageScript(repoPath, scriptName) {
   run("npm", ["run", scriptName], { cwd: repoPath });
 }
 
+function releaseScriptsToRun(packageJson) {
+  const scripts = packageJson.scripts ?? {};
+  return [
+    ...REQUIRED_RELEASE_SCRIPTS,
+    ...OPTIONAL_RELEASE_SCRIPTS.filter((name) => typeof scripts[name] === "string" && scripts[name].trim().length > 0),
+  ];
+}
+
 function expectedReleaseCommitMessage(packageName, version) {
   return `Release ${packageName} v${version}`;
 }
@@ -201,14 +210,16 @@ function assertHeadMatchesReleaseCommit(repoPath, packageName, version) {
   }
 }
 
-function runReleaseValidation(repoPath) {
+async function runReleaseValidation(repoPath) {
+  const packageJson = await readJson(path.join(repoPath, "package.json"));
   runPackageScript(repoPath, "refresh:package-contract");
-  return validateBootstrapUniqueness(repoPath)
-    .then(() => validateMigrationContract(repoPath))
-    .then(() => {
-    runPackageScript(repoPath, "validate:bootstrap");
-    runPackageScript(repoPath, "test:typedb-bootstrap");
-  });
+  await validateBootstrapUniqueness(repoPath);
+  await validateMigrationContract(repoPath);
+
+  for (const scriptName of releaseScriptsToRun(packageJson)) {
+    if (scriptName === "refresh:package-contract") continue;
+    runPackageScript(repoPath, scriptName);
+  }
 }
 
 function pushRelease(repoPath, tagName) {
@@ -241,7 +252,7 @@ async function withValidationWorktree(repoPath, callback) {
   }
 }
 
-function buildSummary({ repoPath, packageName, currentVersion, nextVersion, renamePlan, push }) {
+function buildSummary({ repoPath, packageName, currentVersion, nextVersion, renamePlan, push, scripts }) {
   return {
     repoPath,
     packageName,
@@ -251,7 +262,7 @@ function buildSummary({ repoPath, packageName, currentVersion, nextVersion, rena
     push,
     resumeExistingVersion: false,
     renamedPaths: renamePlan,
-    scripts: REQUIRED_RELEASE_SCRIPTS,
+    scripts,
   };
 }
 
@@ -260,6 +271,7 @@ export async function executeRelease(options) {
   const packageJsonPath = path.join(repoPath, "package.json");
   const packageJson = await readJson(packageJsonPath);
   assertReleaseScripts(packageJson);
+  const scriptsToRun = releaseScriptsToRun(packageJson);
 
   if (options.validateOnly) {
     const summary = {
@@ -271,7 +283,7 @@ export async function executeRelease(options) {
       push: false,
       resumeExistingVersion: false,
       renamedPaths: [],
-      scripts: REQUIRED_RELEASE_SCRIPTS,
+      scripts: scriptsToRun,
       mode: "validate-only",
     };
 
@@ -289,6 +301,7 @@ export async function executeRelease(options) {
     nextVersion: plan.nextVersion,
     renamePlan: plan.renamePlan,
     push: options.push,
+    scripts: scriptsToRun,
   });
   summary.mode = options.dryRun ? "dry-run" : "release";
   summary.resumeExistingVersion = plan.resumeExistingVersion;
