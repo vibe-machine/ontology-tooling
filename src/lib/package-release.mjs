@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { validateBootstrapUniqueness } from "./bootstrap-uniqueness.mjs";
+import { validateMigrationContract } from "./migration-contract.mjs";
 import { resolveReleaseVersion } from "./versions.mjs";
 
 const REQUIRED_RELEASE_SCRIPTS = ["refresh:package-contract", "validate:bootstrap", "test:typedb-bootstrap"];
@@ -202,7 +203,9 @@ function assertHeadMatchesReleaseCommit(repoPath, packageName, version) {
 
 function runReleaseValidation(repoPath) {
   runPackageScript(repoPath, "refresh:package-contract");
-  return validateBootstrapUniqueness(repoPath).then(() => {
+  return validateBootstrapUniqueness(repoPath)
+    .then(() => validateMigrationContract(repoPath))
+    .then(() => {
     runPackageScript(repoPath, "validate:bootstrap");
     runPackageScript(repoPath, "test:typedb-bootstrap");
   });
