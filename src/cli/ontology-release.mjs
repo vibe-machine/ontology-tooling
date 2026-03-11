@@ -14,10 +14,12 @@ Usage:
 Examples:
   ontology-release --repo ../ontology-trace-to-knowledge --bump patch --dry-run
   ontology-release --repo ../ontology-beads --version 0.60.0 --no-push
+  ontology-release --repo ../ontology-gist --version 1.0.3
   ontology-release --repo ../ontology-trace-to-knowledge --validate-only
 
 Current status:
-  The command supports dry-run release planning, validate-only gating, and end-to-end release mutation.
+  The command supports dry-run release planning, validate-only gating, end-to-end release mutation,
+  and repairing a missing tag for an existing release commit by re-running --version <current>.
 `);
 }
 

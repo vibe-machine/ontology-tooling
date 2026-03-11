@@ -16,6 +16,7 @@ mise run check
 mise run test
 mise run release-check -- ../ontology-trace-to-knowledge
 mise run release-dry-run -- ../ontology-trace-to-knowledge patch
+mise run release -- --repo ../ontology-gist --version 1.0.3
 mise run release -- --help
 ```
 

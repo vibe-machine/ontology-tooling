@@ -37,6 +37,16 @@ Use an explicit version instead of a bump:
 mise run release -- --repo ../ontology-trace-to-knowledge --version 1.2.0
 ```
 
+Repair a missing tag for a release commit that already exists at `HEAD`:
+
+```bash
+mise run release -- --repo ../ontology-gist --version 1.0.3
+```
+
+This recovery path only succeeds when `HEAD` is already the matching release commit
+(`Release <pkg> v<version>`). It re-runs validation in an ephemeral worktree, recreates
+the missing tag locally, and atomically pushes the branch and tag together.
+
 ## Release Contract
 
 The target repo must expose these scripts in `package.json`:
@@ -55,7 +65,7 @@ The target repo must expose these scripts in `package.json`:
 6. run `test:typedb-bootstrap`
 7. create the release commit
 8. create the matching git tag
-9. push the branch and tag unless `--no-push` is used
+9. atomically push the branch and tag unless `--no-push` is used
 
 ## Current Position
 
