@@ -1,0 +1,179 @@
+import crypto from "node:crypto";
+import { execFileSync } from "node:child_process";
+import fs from "node:fs/promises";
+import path from "node:path";
+
+/**
+ * Split a TypeQL data file into individual `put` statements.
+ * Each statement starts with `put` and ends with `;`.
+ * Comments and blank lines are stripped.
+ */
+function splitPutStatements(text) {
+  const statements = [];
+  let current = "";
+
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("#") || trimmed === "") continue;
+
+    if (trimmed.startsWith("put ") && current) {
+      statements.push(current.trim());
+      current = line;
+    } else {
+      current += (current ? "\n" : "") + line;
+    }
+  }
+  if (current.trim()) statements.push(current.trim());
+  return statements;
+}
+
+/**
+ * Group consecutive put statements into logical blocks.
+ * An entity put (`put $var isa Type`) followed by relation puts
+ * that reference the same variable form one group.
+ */
+function groupPutStatements(statements) {
+  const groups = [];
+  let currentGroup = null;
+
+  for (const stmt of statements) {
+    const entityMatch = stmt.match(/^put\s+\$(\w+)\s+isa\s+(\w+)/);
+
+    if (entityMatch) {
+      if (currentGroup) groups.push(currentGroup);
+      currentGroup = { variable: entityMatch[1], type: entityMatch[2], statements: [stmt] };
+    } else if (currentGroup && stmt.includes(`$${currentGroup.variable}`)) {
+      currentGroup.statements.push(stmt);
+    } else {
+      if (currentGroup) groups.push(currentGroup);
+      currentGroup = { variable: null, type: null, statements: [stmt] };
+    }
+  }
+  if (currentGroup) groups.push(currentGroup);
+  return groups;
+}
+
+/**
+ * Extract a stable key from a put-group for diffing.
+ * Uses the entity type + first `has` attribute name + value.
+ */
+function extractGroupKey(group) {
+  const firstStmt = group.statements[0];
+  const typeMatch = firstStmt.match(/isa\s+(\w+)/);
+  const hasMatch = firstStmt.match(/has\s+(\w+)\s+"([^"]+)"/);
+
+  if (typeMatch && hasMatch) {
+    return `${typeMatch[1]}::${hasMatch[1]}::${hasMatch[2]}`;
+  }
+  return `raw::${firstStmt.substring(0, 120)}`;
+}
+
+/**
+ * Find groups from allGroups whose variables are referenced by changedGroups
+ * but not defined within changedGroups (preamble dependencies).
+ */
+function resolvePreambles(changedGroups, allGroups) {
+  const definedVars = new Set(changedGroups.filter((g) => g.variable).map((g) => g.variable));
+  const neededVars = new Set();
+
+  for (const group of changedGroups) {
+    const text = group.statements.join("\n");
+    for (const match of text.matchAll(/\$(\w+)/g)) {
+      if (!definedVars.has(match[1])) neededVars.add(match[1]);
+    }
+  }
+
+  return allGroups.filter((g) => g.variable && neededVars.has(g.variable) && !definedVars.has(g.variable));
+}
+
+function getFileAtTag(repoPath, tag, relativePath) {
+  try {
+    return execFileSync("git", ["show", `${tag}:${relativePath}`], {
+      cwd: repoPath,
+      encoding: "utf8",
+    });
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Generate a migration diff between two versions of a package.
+ * Compares data files from the previous git tag against the current working tree.
+ * Writes a migration file to migrations/vX-to-vY.tql.
+ *
+ * Returns the relative path to the migration file, or null if no data changed.
+ */
+export async function generateMigrationDiff(repoPath, fromVersion, toVersion) {
+  const packageJsonPath = path.join(repoPath, "package.json");
+  const packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf8"));
+  const dataFiles = packageJson.data ?? [];
+
+  if (dataFiles.length === 0) return null;
+
+  const fromTag = `v${fromVersion}`;
+  const allNewGroups = [];
+  const changedGroups = [];
+
+  for (const dataFile of dataFiles) {
+    const oldText = getFileAtTag(repoPath, fromTag, dataFile);
+    const newText = await fs.readFile(path.join(repoPath, dataFile), "utf8");
+
+    const oldGroups = groupPutStatements(splitPutStatements(oldText));
+    const newGroups = groupPutStatements(splitPutStatements(newText));
+    allNewGroups.push(...newGroups);
+
+    const oldMap = new Map();
+    for (const g of oldGroups) oldMap.set(extractGroupKey(g), g.statements.join("\n"));
+
+    for (const g of newGroups) {
+      const key = extractGroupKey(g);
+      if (oldMap.get(key) !== g.statements.join("\n")) {
+        changedGroups.push(g);
+      }
+    }
+  }
+
+  if (changedGroups.length === 0) return null;
+
+  const preambles = resolvePreambles(changedGroups, allNewGroups);
+  const outputGroups = [...preambles, ...changedGroups];
+
+  // Write migration file
+  const migrationRelPath = `migrations/v${fromVersion}-to-v${toVersion}.tql`;
+  const migrationAbsPath = path.join(repoPath, migrationRelPath);
+  await fs.mkdir(path.dirname(migrationAbsPath), { recursive: true });
+
+  const manifestRelPath = (packageJson.manifests ?? []).find((m) => m.endsWith(".package-manifest.json"));
+
+  const header = [
+    `# Migration: ${packageJson.name} v${fromVersion} \u2192 v${toVersion}`,
+    `# Generated by ontology-release`,
+    `# Apply in a write transaction against an existing database`,
+    ...(manifestRelPath ? [`# manifest: ${manifestRelPath}`] : []),
+    "",
+  ].join("\n");
+
+  const body = outputGroups.map((g) => g.statements.join("\n")).join("\n\n");
+  const migrationContent = `${header}\n${body}\n`;
+  await fs.writeFile(migrationAbsPath, migrationContent);
+
+  // Append migration file hash to the package manifest
+  if (manifestRelPath) {
+    const manifestPath = path.join(repoPath, manifestRelPath);
+    const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
+    const sha256 = crypto.createHash("sha256").update(migrationContent).digest("hex");
+    if (!manifest.artifacts) manifest.artifacts = [];
+    manifest.artifacts.push({ kind: "migration", path: migrationRelPath, sha256 });
+    await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  }
+
+  return migrationRelPath;
+}
+
+export const testing = {
+  extractGroupKey,
+  groupPutStatements,
+  resolvePreambles,
+  splitPutStatements,
+};

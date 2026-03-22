@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { validateBootstrapUniqueness } from "./bootstrap-uniqueness.mjs";
+import { generateMigrationDiff } from "./migration-diff.mjs";
 import { validateMigrationContract } from "./migration-contract.mjs";
 import { resolveReleaseVersion } from "./versions.mjs";
 
@@ -210,9 +211,12 @@ function assertHeadMatchesReleaseCommit(repoPath, packageName, version) {
   }
 }
 
-async function runReleaseValidation(repoPath) {
+async function runReleaseValidation(repoPath, { afterRefresh } = {}) {
   const packageJson = await readJson(path.join(repoPath, "package.json"));
   runPackageScript(repoPath, "refresh:package-contract");
+
+  if (afterRefresh) await afterRefresh(repoPath);
+
   await validateBootstrapUniqueness(repoPath);
   await validateMigrationContract(repoPath);
 
@@ -322,7 +326,14 @@ export async function executeRelease(options) {
     await writeJson(packageJsonPath, plan.nextPackageJson);
     await applyRenamePlan(repoPath, plan.renamePlan);
 
-    await runReleaseValidation(repoPath);
+    await runReleaseValidation(repoPath, {
+      afterRefresh: async (repo) => {
+        const migrationPath = await generateMigrationDiff(repo, plan.currentVersion, plan.nextVersion);
+        if (migrationPath) {
+          summary.migrationDiff = migrationPath;
+        }
+      },
+    });
 
     run("git", ["add", "-A"], { cwd: repoPath });
     run("git", ["commit", "-m", expectedReleaseCommitMessage(packageJson.name, plan.nextVersion)], { cwd: repoPath });
