@@ -129,12 +129,13 @@ test("diffEntityGroup generates match/delete/insert for changed scopeNote", () =
   assert.ok(result, "should produce an update statement");
   assert.ok(result.includes("match"));
   assert.ok(result.includes('has docKey "key1"'));
+  assert.ok(result.includes("has scopeNote $r1_old_scopeNote"));
   assert.ok(result.includes("delete"));
-  assert.ok(result.includes('"old note"'));
+  assert.ok(result.includes("has $r1_old_scopeNote of $r1"));
   assert.ok(result.includes("insert"));
   assert.ok(result.includes('"new note"'));
-  // Should NOT include docKey or typeLabel in changes
-  assert.ok(!result.includes("delete") || !result.includes("typeLabel"));
+  // Should NOT include typeLabel in the update
+  assert.ok(!result.includes("typeLabel"));
 });
 
 test("diffEntityGroup returns null when only relation puts changed", () => {

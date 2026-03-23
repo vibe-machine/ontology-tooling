@@ -86,24 +86,24 @@ function parseHasClauses(statement) {
  * on an existing entity identified by its key attribute.
  */
 function renderEntityUpdate(variable, type, keyClauses, changedAttrs) {
-  const lines = [];
-
-  // Match the entity by key
-  lines.push("match");
-  lines.push(`  $${variable} isa ${type},`);
-  const keyParts = keyClauses.map((c) => `    has ${c.attribute} ${c.value}`);
-  lines.push(keyParts.join(",\n") + ";");
+  // One match/delete/insert pipeline per changed attribute.
+  // Each pipeline is a separate query separated by blank lines.
+  const pipelines = [];
 
   for (const change of changedAttrs) {
-    // Delete old values, insert new values — one pipeline per attribute
+    const oldVar = `$${variable}_old_${change.attribute}`;
+    const lines = [];
+
+    lines.push("match");
+    lines.push(`  $${variable} isa ${type},`);
+    const keyParts = keyClauses.map((c) => `    has ${c.attribute} ${c.value}`);
+    lines.push(keyParts.join(",\n") + ",");
+    // Bind old value to a variable so delete can reference it
+    lines.push(`    has ${change.attribute} ${oldVar};`);
+
     if (change.oldValues.length > 0) {
-      for (const oldVal of change.oldValues) {
-        lines.push(`  $${variable} has ${change.attribute} ${oldVal};`);
-      }
       lines.push("delete");
-      for (const oldVal of change.oldValues) {
-        lines.push(`  has ${change.attribute} ${oldVal} of $${variable};`);
-      }
+      lines.push(`  has ${oldVar} of $${variable};`);
     }
     if (change.newValues.length > 0) {
       lines.push("insert");
@@ -111,9 +111,11 @@ function renderEntityUpdate(variable, type, keyClauses, changedAttrs) {
         lines.push(`  $${variable} has ${change.attribute} ${newVal};`);
       }
     }
+
+    pipelines.push(lines.join("\n"));
   }
 
-  return lines.join("\n");
+  return pipelines.join("\n\n");
 }
 
 /**
