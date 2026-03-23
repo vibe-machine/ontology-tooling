@@ -69,6 +69,103 @@ function extractGroupKey(group) {
 }
 
 /**
+ * Parse `has` clauses from an entity put statement.
+ * Returns an array of { attribute, value } objects.
+ */
+function parseHasClauses(statement) {
+  const clauses = [];
+  const re = /has\s+(\w+)\s+("(?:[^"\\]|\\.)*"|\S+?)(?:\s+(@\w+(?:\([^)]*\))?))?(?=[,;]|\s*$)/g;
+  for (const match of statement.matchAll(re)) {
+    clauses.push({ attribute: match[1], value: match[2], annotation: match[3] || null });
+  }
+  return clauses;
+}
+
+/**
+ * Generate a match/delete/insert statement to update changed attributes
+ * on an existing entity identified by its key attribute.
+ */
+function renderEntityUpdate(variable, type, keyClauses, changedAttrs) {
+  const lines = [];
+
+  // Match the entity by key
+  lines.push("match");
+  lines.push(`  $${variable} isa ${type},`);
+  const keyParts = keyClauses.map((c) => `    has ${c.attribute} ${c.value}`);
+  lines.push(keyParts.join(",\n") + ";");
+
+  for (const change of changedAttrs) {
+    // Delete old values, insert new values — one pipeline per attribute
+    if (change.oldValues.length > 0) {
+      for (const oldVal of change.oldValues) {
+        lines.push(`  $${variable} has ${change.attribute} ${oldVal};`);
+      }
+      lines.push("delete");
+      for (const oldVal of change.oldValues) {
+        lines.push(`  has ${change.attribute} ${oldVal} of $${variable};`);
+      }
+    }
+    if (change.newValues.length > 0) {
+      lines.push("insert");
+      for (const newVal of change.newValues) {
+        lines.push(`  $${variable} has ${change.attribute} ${newVal};`);
+      }
+    }
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Compare old and new entity put statements and produce an update statement
+ * if attributes changed. Returns null if only relation puts changed.
+ */
+function diffEntityGroup(oldGroup, newGroup) {
+  const oldEntity = oldGroup.statements[0];
+  const newEntity = newGroup.statements[0];
+
+  const oldClauses = parseHasClauses(oldEntity);
+  const newClauses = parseHasClauses(newEntity);
+
+  if (oldClauses.length === 0 || newClauses.length === 0) return null;
+
+  // Key clause = first has attribute (matches extractGroupKey logic)
+  const keyAttr = newClauses[0].attribute;
+  const keyClauses = newClauses.filter((c) => c.attribute === keyAttr);
+
+  // Build attr → [values] maps for non-key attributes
+  const buildAttrMap = (clauses) => {
+    const map = new Map();
+    for (const c of clauses) {
+      if (c.attribute === keyAttr) continue;
+      if (!map.has(c.attribute)) map.set(c.attribute, []);
+      map.get(c.attribute).push(c.value);
+    }
+    return map;
+  };
+
+  const oldAttrs = buildAttrMap(oldClauses);
+  const newAttrs = buildAttrMap(newClauses);
+
+  const changedAttrs = [];
+  for (const [attr, newValues] of newAttrs) {
+    const oldValues = oldAttrs.get(attr) || [];
+    if (JSON.stringify(oldValues) !== JSON.stringify(newValues)) {
+      changedAttrs.push({ attribute: attr, oldValues, newValues });
+    }
+  }
+  for (const [attr, oldValues] of oldAttrs) {
+    if (!newAttrs.has(attr)) {
+      changedAttrs.push({ attribute: attr, oldValues, newValues: [] });
+    }
+  }
+
+  if (changedAttrs.length === 0) return null;
+
+  return renderEntityUpdate(newGroup.variable, newGroup.type, keyClauses, changedAttrs);
+}
+
+/**
  * Find groups from allGroups whose variables are referenced by changedGroups
  * but not defined within changedGroups (preamble dependencies).
  */
@@ -100,7 +197,9 @@ function getFileAtTag(repoPath, tag, relativePath) {
 /**
  * Generate a migration diff between two versions of a package.
  * Compares data files from the previous git tag against the current working tree.
- * Writes a migration file to migrations/vX-to-vY.tql.
+ *
+ * - New entities use `put` statements.
+ * - Changed entities use `match`/`delete`/`insert` to update only the changed attributes.
  *
  * Returns the relative path to the migration file, or null if no data changed.
  */
@@ -113,33 +212,47 @@ export async function generateMigrationDiff(repoPath, fromVersion, toVersion) {
 
   const fromTag = `v${fromVersion}`;
   const allNewGroups = [];
-  const changedGroups = [];
+  const newGroups = [];
+  const updateStatements = [];
 
   for (const dataFile of dataFiles) {
     const oldText = getFileAtTag(repoPath, fromTag, dataFile);
     const newText = await fs.readFile(path.join(repoPath, dataFile), "utf8");
 
     const oldGroups = groupPutStatements(splitPutStatements(oldText));
-    const newGroups = groupPutStatements(splitPutStatements(newText));
-    allNewGroups.push(...newGroups);
+    const newGroups_ = groupPutStatements(splitPutStatements(newText));
+    allNewGroups.push(...newGroups_);
 
     const oldMap = new Map();
-    for (const g of oldGroups) oldMap.set(extractGroupKey(g), g.statements.join("\n"));
+    for (const g of oldGroups) oldMap.set(extractGroupKey(g), g);
 
-    for (const g of newGroups) {
+    for (const g of newGroups_) {
       const key = extractGroupKey(g);
-      if (oldMap.get(key) !== g.statements.join("\n")) {
-        changedGroups.push(g);
+      const oldGroup = oldMap.get(key);
+
+      if (!oldGroup) {
+        // New entity — use put
+        newGroups.push(g);
+      } else if (oldGroup.statements.join("\n") !== g.statements.join("\n")) {
+        // Changed entity — generate match/delete/insert for attribute diffs
+        const updateStmt = diffEntityGroup(oldGroup, g);
+        if (updateStmt) {
+          updateStatements.push(updateStmt);
+        } else {
+          // Only relation puts changed — use put (safe for relations)
+          newGroups.push(g);
+        }
       }
     }
   }
 
-  if (changedGroups.length === 0) return null;
+  if (newGroups.length === 0 && updateStatements.length === 0) return null;
 
-  const preambles = resolvePreambles(changedGroups, allNewGroups);
-  const outputGroups = [...preambles, ...changedGroups];
+  // Resolve preambles for new groups (put statements need shared variables)
+  const preambles = newGroups.length > 0 ? resolvePreambles(newGroups, allNewGroups) : [];
+  const putGroups = [...preambles, ...newGroups];
 
-  // Write migration file
+  // Build migration file
   const migrationRelPath = `migrations/v${fromVersion}-to-v${toVersion}.tql`;
   const migrationAbsPath = path.join(repoPath, migrationRelPath);
   await fs.mkdir(path.dirname(migrationAbsPath), { recursive: true });
@@ -154,8 +267,15 @@ export async function generateMigrationDiff(repoPath, fromVersion, toVersion) {
     "",
   ].join("\n");
 
-  const body = outputGroups.map((g) => g.statements.join("\n")).join("\n\n");
-  const migrationContent = `${header}\n${body}\n`;
+  const sections = [];
+  if (putGroups.length > 0) {
+    sections.push(putGroups.map((g) => g.statements.join("\n")).join("\n\n"));
+  }
+  if (updateStatements.length > 0) {
+    sections.push(updateStatements.join("\n\n"));
+  }
+
+  const migrationContent = `${header}\n${sections.join("\n\n")}\n`;
   await fs.writeFile(migrationAbsPath, migrationContent);
 
   // Append migration file hash to the package manifest
@@ -172,8 +292,10 @@ export async function generateMigrationDiff(repoPath, fromVersion, toVersion) {
 }
 
 export const testing = {
+  diffEntityGroup,
   extractGroupKey,
   groupPutStatements,
+  parseHasClauses,
   resolvePreambles,
   splitPutStatements,
 };
