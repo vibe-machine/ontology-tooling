@@ -47,6 +47,89 @@ function dedupeRenames(renamePlan) {
   return [...deduped.values()];
 }
 
+function parseSemver(value) {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(value);
+  if (!match) {
+    throw new Error(`Invalid semver value: ${value}`);
+  }
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3]),
+  };
+}
+
+function semverMinorRange(version) {
+  const parsed = parseSemver(version);
+  return `${parsed.major}.${parsed.minor}.x`;
+}
+
+function rewriteMigrationMetadata(nextPackageJson, currentVersion, nextVersion) {
+  const migration = nextPackageJson.migration;
+  if (!migration || typeof migration !== "object") return;
+
+  migration.supportsUpgradeFrom = [semverMinorRange(currentVersion)];
+
+  if (!Array.isArray(migration.plans) || migration.plans.length === 0) return;
+
+  migration.plans = migration.plans.map((plan) => ({
+    ...plan,
+    id: `${nextPackageJson.name}-${currentVersion}-to-${nextVersion}`,
+    from: currentVersion,
+    to: nextVersion,
+    snapshot: {
+      ...(plan.snapshot ?? {}),
+      required: plan.mode === "replace" ? true : plan.snapshot?.required ?? false,
+      label: `pre-${nextPackageJson.name}-${nextVersion}-migration`,
+    },
+    phases: [
+      {
+        id: "preflight",
+        units: [{ kind: "assert-data", path: `migrations/preflight/assert-v${currentVersion}-build.tql` }],
+      },
+      {
+        id: "migrate",
+        units: [{ kind: "write", path: `migrations/v${currentVersion}-to-v${nextVersion}.tql` }],
+      },
+      {
+        id: "verify",
+        units: [{ kind: "assert-data", path: `migrations/verify/assert-v${nextVersion}-build.tql` }],
+      },
+    ],
+  }));
+}
+
+async function writeMigrationAssertions(repoPath, packageName, currentVersion, nextVersion) {
+  const preflightPath = path.join(repoPath, "migrations", "preflight", `assert-v${currentVersion}-build.tql`);
+  const verifyPath = path.join(repoPath, "migrations", "verify", `assert-v${nextVersion}-build.tql`);
+
+  await fs.mkdir(path.dirname(preflightPath), { recursive: true });
+  await fs.mkdir(path.dirname(verifyPath), { recursive: true });
+
+  const preflight = `match
+  $build isa OntologyPackageBuild,
+    has packageName "${packageName}",
+    has packageVersion "${currentVersion}";
+  not {
+    $current isa OntologyPackageBuild,
+      has packageName "${packageName}",
+      has packageVersion "${nextVersion}";
+  };
+limit 1;
+`;
+
+  const verify = `match
+  $build isa OntologyPackageBuild,
+    has packageName "${packageName}",
+    has packageVersion "${nextVersion}",
+    has upstreamTag "v${nextVersion}";
+limit 1;
+`;
+
+  await fs.writeFile(preflightPath, preflight, "utf8");
+  await fs.writeFile(verifyPath, verify, "utf8");
+}
+
 export function planPackageRelease(packageJson, { bump, version }) {
   const currentVersion = packageJson.version;
   if (!currentVersion) {
@@ -71,6 +154,7 @@ export function planPackageRelease(packageJson, { bump, version }) {
 
   const nextPackageJson = structuredClone(packageJson);
   nextPackageJson.version = nextVersion;
+  rewriteMigrationMetadata(nextPackageJson, currentVersion, nextVersion);
 
   const renamePlan = [];
 
@@ -330,6 +414,7 @@ export async function executeRelease(options) {
       afterRefresh: async (repo) => {
         const migrationPath = await generateMigrationDiff(repo, plan.currentVersion, plan.nextVersion);
         if (migrationPath) {
+          await writeMigrationAssertions(repo, packageJson.name, plan.currentVersion, plan.nextVersion);
           summary.migrationDiff = migrationPath;
         }
       },

@@ -190,6 +190,7 @@ function getFileAtTag(repoPath, tag, relativePath) {
     return execFileSync("git", ["show", `${tag}:${relativePath}`], {
       cwd: repoPath,
       encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
     });
   } catch {
     return "";

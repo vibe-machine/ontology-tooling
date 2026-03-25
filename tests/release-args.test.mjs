@@ -148,6 +148,72 @@ test("planPackageRelease preserves upstream metadata and rewrites scripts", () =
   assert.equal(plan.nextPackageJson.provenance.manifest, "manifests/gist-v1.0.0.translation-manifest.json");
 });
 
+test("planPackageRelease rewrites migration metadata for the next release", () => {
+  const plan = planPackageRelease(
+    {
+      name: "vibemachine",
+      version: "0.6.0",
+      migration: {
+        format: 1,
+        supportsUpgradeFrom: ["0.5.x"],
+        plans: [
+          {
+            id: "vibemachine-0.5.0-to-0.6.0",
+            from: "0.5.0",
+            to: "0.6.0",
+            mode: "replace",
+            snapshot: { required: true, label: "pre-vibemachine-0.6.0-migration" },
+            phases: [
+              {
+                id: "preflight",
+                units: [{ kind: "assert-data", path: "migrations/preflight/assert-v0.5.0-build.tql" }],
+              },
+              {
+                id: "migrate",
+                units: [{ kind: "write", path: "migrations/v0.5.0-to-v0.6.0.tql" }],
+              },
+              {
+                id: "verify",
+                units: [{ kind: "assert-data", path: "migrations/verify/assert-v0.6.0-build.tql" }],
+              },
+            ],
+          },
+        ],
+      },
+      scripts: {
+        "refresh:package-contract": "node tools/package_contract/refresh_package_contract.mjs",
+        "validate:bootstrap": "node tools/package_contract/validate_bootstrap.mjs",
+        "test:typedb-bootstrap": "node tools/package_contract/validate_typedb_bootstrap.mjs",
+      },
+    },
+    { bump: "minor", version: null }
+  );
+
+  assert.equal(plan.nextVersion, "0.7.0");
+  assert.deepEqual(plan.nextPackageJson.migration.supportsUpgradeFrom, ["0.6.x"]);
+  assert.equal(plan.nextPackageJson.migration.plans[0].id, "vibemachine-0.6.0-to-0.7.0");
+  assert.equal(plan.nextPackageJson.migration.plans[0].from, "0.6.0");
+  assert.equal(plan.nextPackageJson.migration.plans[0].to, "0.7.0");
+  assert.equal(
+    plan.nextPackageJson.migration.plans[0].snapshot.label,
+    "pre-vibemachine-0.7.0-migration"
+  );
+  assert.deepEqual(plan.nextPackageJson.migration.plans[0].phases, [
+    {
+      id: "preflight",
+      units: [{ kind: "assert-data", path: "migrations/preflight/assert-v0.6.0-build.tql" }],
+    },
+    {
+      id: "migrate",
+      units: [{ kind: "write", path: "migrations/v0.6.0-to-v0.7.0.tql" }],
+    },
+    {
+      id: "verify",
+      units: [{ kind: "assert-data", path: "migrations/verify/assert-v0.7.0-build.tql" }],
+    },
+  ]);
+});
+
 test("planPackageRelease supports resuming a release when the explicit version matches package.json", () => {
   const packageJson = {
     name: "gist",
@@ -175,7 +241,7 @@ test("planPackageRelease supports resuming a release when the explicit version m
   assert.deepEqual(plan.nextPackageJson, packageJson);
 });
 
-async function createFixtureRepo(t, { withRemote = false } = {}) {
+async function createFixtureRepo(t, { withRemote = false, withMigration = false } = {}) {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "ontology-release-"));
   t.after(async () => {
     await fs.rm(tempRoot, { recursive: true, force: true });
@@ -189,6 +255,8 @@ async function createFixtureRepo(t, { withRemote = false } = {}) {
   const packageJson = {
     name: "fixture-package",
     version: "1.0.0",
+    schemas: [{ name: "fixture", file: "schema/fixture.tql" }],
+    data: ["data/fixture-provenance.tql"],
     manifests: ["manifests/fixture-package-v1.0.0.package-manifest.json"],
     provenance: {
       manifest: "manifests/fixture-package-v1.0.0.package-manifest.json",
@@ -206,13 +274,48 @@ async function createFixtureRepo(t, { withRemote = false } = {}) {
     },
   };
 
+  if (withMigration) {
+    packageJson.migration = {
+      format: 1,
+      supportsUpgradeFrom: ["1.0.x"],
+      plans: [
+        {
+          id: "fixture-package-1.0.0-to-1.0.0",
+          from: "1.0.0",
+          to: "1.0.0",
+          mode: "replace",
+          snapshot: { required: true, label: "pre-fixture-package-1.0.0-migration" },
+          phases: [
+            {
+              id: "preflight",
+              units: [{ kind: "assert-data", path: "migrations/preflight/assert-v1.0.0-build.tql" }],
+            },
+            {
+              id: "migrate",
+              units: [{ kind: "write", path: "migrations/v1.0.0-to-v1.0.0.tql" }],
+            },
+            {
+              id: "verify",
+              units: [{ kind: "assert-data", path: "migrations/verify/assert-v1.0.0-build.tql" }],
+            },
+          ],
+        },
+      ],
+    };
+  }
+
   await fs.writeFile(path.join(repoPath, "package.json"), `${JSON.stringify(packageJson, null, 2)}\n`);
+  await fs.mkdir(path.join(repoPath, "schema"), { recursive: true });
   await fs.writeFile(
     path.join(repoPath, "manifests", "fixture-package-v1.0.0.package-manifest.json"),
     `${JSON.stringify({ package: { name: "fixture-package", version: "1.0.0" } }, null, 2)}\n`
   );
   await fs.writeFile(path.join(repoPath, "manifests", "fixture-package-v1.0.0.report.json"), "{\n  \"report\": true\n}\n");
-  await fs.writeFile(path.join(repoPath, "data", "fixture-provenance.tql"), "# fixture\n");
+  await fs.writeFile(path.join(repoPath, "schema", "fixture.tql"), "define\nattribute docKey, value string;\nentity SchemaResource, owns docKey;\n");
+  await fs.writeFile(
+    path.join(repoPath, "data", "fixture-provenance.tql"),
+    'put $r1 isa SchemaResource,\n  has docKey "fixture-build@1.0.0";\n'
+  );
 
   await fs.writeFile(
     path.join(repoPath, "tools", "package_contract", "refresh_package_contract.mjs"),
@@ -350,4 +453,33 @@ test("executeRelease pushes the release commit and tag when push is enabled", as
   });
   assert.match(remoteHeads, /refs\/heads\/main/);
   assert.match(remoteHeads, /refs\/tags\/v1\.0\.1/);
+});
+
+test("executeRelease updates migration metadata and emits migration assertion files", async (t) => {
+  const { repoPath } = await createFixtureRepo(t, { withMigration: true });
+  const summary = await executeRelease({ repo: repoPath, bump: "patch", version: null, dryRun: false, push: false });
+
+  assert.equal(summary.nextVersion, "1.0.1");
+  assert.equal(summary.migrationDiff, "migrations/v1.0.0-to-v1.0.1.tql");
+
+  const packageJson = JSON.parse(await fs.readFile(path.join(repoPath, "package.json"), "utf8"));
+  assert.deepEqual(packageJson.migration.supportsUpgradeFrom, ["1.0.x"]);
+  assert.equal(packageJson.migration.plans[0].id, "fixture-package-1.0.0-to-1.0.1");
+  assert.equal(packageJson.migration.plans[0].to, "1.0.1");
+  assert.equal(
+    packageJson.migration.plans[0].phases[0].units[0].path,
+    "migrations/preflight/assert-v1.0.0-build.tql"
+  );
+  assert.equal(
+    packageJson.migration.plans[0].phases[1].units[0].path,
+    "migrations/v1.0.0-to-v1.0.1.tql"
+  );
+  assert.equal(
+    packageJson.migration.plans[0].phases[2].units[0].path,
+    "migrations/verify/assert-v1.0.1-build.tql"
+  );
+
+  await assert.doesNotReject(fs.access(path.join(repoPath, "migrations", "preflight", "assert-v1.0.0-build.tql")));
+  await assert.doesNotReject(fs.access(path.join(repoPath, "migrations", "v1.0.0-to-v1.0.1.tql")));
+  await assert.doesNotReject(fs.access(path.join(repoPath, "migrations", "verify", "assert-v1.0.1-build.tql")));
 });
