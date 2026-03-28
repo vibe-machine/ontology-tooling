@@ -26,6 +26,14 @@ async function writeJson(filePath, value) {
   await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+function resolveModuleRepoUrl(packageJson) {
+  return packageJson.source?.repoUrl
+    ?? (typeof packageJson.source === "string" ? packageJson.source : null)
+    ?? packageJson.upstream?.repoUrl
+    ?? packageJson.upstream?.repo
+    ?? null;
+}
+
 async function shouldInstallNodeDependencies(repoPath) {
   const packageJson = await readJson(path.join(repoPath, "package.json"));
   const dependencyFields = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
@@ -85,7 +93,7 @@ function rewriteMigrationMetadata(nextPackageJson, currentVersion, nextVersion) 
     phases: [
       {
         id: "preflight",
-        units: [{ kind: "assert-data", path: `migrations/preflight/assert-v${currentVersion}-build.tql` }],
+        units: [{ kind: "assert-data", path: `migrations/preflight/assert-v${currentVersion}-module-version.tql` }],
       },
       {
         id: "migrate",
@@ -93,36 +101,44 @@ function rewriteMigrationMetadata(nextPackageJson, currentVersion, nextVersion) 
       },
       {
         id: "verify",
-        units: [{ kind: "assert-data", path: `migrations/verify/assert-v${nextVersion}-build.tql` }],
+        units: [{ kind: "assert-data", path: `migrations/verify/assert-v${nextVersion}-module-version.tql` }],
       },
     ],
   }));
 }
 
-async function writeMigrationAssertions(repoPath, packageName, currentVersion, nextVersion) {
-  const preflightPath = path.join(repoPath, "migrations", "preflight", `assert-v${currentVersion}-build.tql`);
-  const verifyPath = path.join(repoPath, "migrations", "verify", `assert-v${nextVersion}-build.tql`);
+async function writeMigrationAssertions(repoPath, packageJson, currentVersion, nextVersion) {
+  const moduleRepoUrl = resolveModuleRepoUrl(packageJson);
+  if (typeof moduleRepoUrl !== "string" || moduleRepoUrl.trim().length === 0) {
+    throw new Error("Target package.json is missing source/upstream repo URL required for migration assertions");
+  }
+
+  const preflightPath = path.join(repoPath, "migrations", "preflight", `assert-v${currentVersion}-module-version.tql`);
+  const verifyPath = path.join(repoPath, "migrations", "verify", `assert-v${nextVersion}-module-version.tql`);
 
   await fs.mkdir(path.dirname(preflightPath), { recursive: true });
   await fs.mkdir(path.dirname(verifyPath), { recursive: true });
 
   const preflight = `match
-  $build isa OntologyPackageBuild,
-    has packageName "${packageName}",
-    has packageVersion "${currentVersion}";
+  $module isa OntologyModule,
+    has moduleRepoUrl "${moduleRepoUrl}";
+  $version isa OntologyModuleVersion,
+    has moduleVersion "${currentVersion}";
+  (version: $version, module: $module) isa ontologyModuleVersionOf;
   not {
-    $current isa OntologyPackageBuild,
-      has packageName "${packageName}",
-      has packageVersion "${nextVersion}";
+    $next isa OntologyModuleVersion,
+      has moduleVersion "${nextVersion}";
+    (version: $next, module: $module) isa ontologyModuleVersionOf;
   };
 limit 1;
 `;
 
   const verify = `match
-  $build isa OntologyPackageBuild,
-    has packageName "${packageName}",
-    has packageVersion "${nextVersion}",
-    has upstreamTag "v${nextVersion}";
+  $module isa OntologyModule,
+    has moduleRepoUrl "${moduleRepoUrl}";
+  $version isa OntologyModuleVersion,
+    has moduleVersion "${nextVersion}";
+  (version: $version, module: $module) isa ontologyModuleVersionOf;
 limit 1;
 `;
 
@@ -421,7 +437,7 @@ export async function executeRelease(options) {
       afterRefresh: async (repo) => {
         const migrationPath = await generateMigrationDiff(repo, plan.currentVersion, plan.nextVersion);
         if (migrationPath) {
-          await writeMigrationAssertions(repo, packageJson.name, plan.currentVersion, plan.nextVersion);
+          await writeMigrationAssertions(repo, plan.nextPackageJson, plan.currentVersion, plan.nextVersion);
           summary.migrationDiff = migrationPath;
           return;
         }

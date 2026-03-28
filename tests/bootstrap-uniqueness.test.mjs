@@ -11,35 +11,35 @@ import { testing, validateBootstrapUniqueness } from "../src/lib/bootstrap-uniqu
 test("extractKeyedEntitiesFromSchema returns keyed entity attributes", () => {
   const schema = `define
 
-attribute buildKey, value string;
+attribute moduleVersionKey, value string;
 
-entity OntologyPackageBuild,
-  owns buildKey @key,
-  owns packageName;
+entity OntologyModuleVersion,
+  owns moduleVersionKey @key,
+  owns moduleVersion;
 `;
 
   assert.deepEqual(testing.extractKeyedEntitiesFromSchema(schema), {
-    OntologyPackageBuild: ["buildKey"],
+    OntologyModuleVersion: ["moduleVersionKey"],
   });
 });
 
 test("findInsertStatementsForKeyedEntities reports keyed insert violations", () => {
   const tql = `insert
 
-$build isa OntologyPackageBuild,
-  has buildKey "vibemachine@0.2.2:8461ef7",
-  has packageName "vibemachine";
+$version isa OntologyModuleVersion,
+  has moduleVersionKey "https://github.com/objectiveous/ontology-vibemachine@0.2.2",
+  has moduleVersion "0.2.2";
 `;
 
   assert.deepEqual(
     testing.findInsertStatementsForKeyedEntities(tql, {
-      OntologyPackageBuild: ["buildKey"],
+      OntologyModuleVersion: ["moduleVersionKey"],
     }),
     [
       {
-        entityType: "OntologyPackageBuild",
-        keyAttr: "buildKey",
-        value: "vibemachine@0.2.2:8461ef7",
+        entityType: "OntologyModuleVersion",
+        keyAttr: "moduleVersionKey",
+        value: "https://github.com/objectiveous/ontology-vibemachine@0.2.2",
       },
     ]
   );
@@ -60,6 +60,10 @@ async function createFixtureRepo(t, { brokenRefresh = false } = {}) {
   const packageJson = {
     name: "fixture-package",
     version: "1.0.0",
+    upstream: {
+      repoUrl: "https://example.com/fixture-package",
+      commit: "abc123",
+    },
     schemas: [{ name: "package-provenance", file: "schema/package-provenance.tql" }],
     data: ["data/fixture-provenance.tql"],
     manifests: ["manifests/fixture-package-v1.0.0.package-manifest.json"],
@@ -82,11 +86,15 @@ async function createFixtureRepo(t, { brokenRefresh = false } = {}) {
     path.join(repoPath, "schema", "package-provenance.tql"),
     `define
 
-attribute buildKey, value string;
+attribute moduleRepoUrl, value string;
+attribute moduleVersionKey, value string;
 
-entity OntologyPackageBuild,
-  owns buildKey @key,
-  owns packageName;
+entity OntologyModule,
+  owns moduleRepoUrl @key;
+
+entity OntologyModuleVersion,
+  owns moduleVersionKey @key,
+  owns moduleVersion;
 `
   );
   await fs.writeFile(
@@ -100,13 +108,13 @@ const tql = ${JSON.stringify(
       brokenRefresh
         ? `insert
 
-$build isa OntologyPackageBuild,
-  has buildKey "fixture-package@1.0.1:abc123",
-  has packageName "fixture-package";
+$version isa OntologyModuleVersion,
+  has moduleVersionKey "https://example.com/fixture-package@1.0.1",
+  has moduleVersion "1.0.1";
 `
-        : `put $build isa OntologyPackageBuild,
-  has buildKey "fixture-package@1.0.1:abc123",
-  has packageName "fixture-package";
+        : `put $version isa OntologyModuleVersion,
+  has moduleVersionKey "https://example.com/fixture-package@1.0.1",
+  has moduleVersion "1.0.1";
 `
     )};
 await fs.writeFile("data/fixture-provenance.tql", tql);

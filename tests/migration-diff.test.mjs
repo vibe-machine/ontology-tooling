@@ -268,7 +268,7 @@ test("generateMigrationDiff excludes target provenance assets from the migration
   await fs.writeFile(path.join(repoPath, "data", "seed.tql"), 'put $seed isa SeedThing,\n  has seedKey "seed-1";\n');
   await fs.writeFile(
     path.join(repoPath, "data", "provenance.tql"),
-    'put $build isa OntologyPackageBuild,\n  has buildKey "fixture-package@1.0.0";\n'
+    'put $version isa OntologyModuleVersion,\n  has moduleVersionKey "https://example.com/fixture-package@1.0.0";\n'
   );
 
   execFileSync("git", ["init", "-b", "main"], { cwd: repoPath, stdio: "ignore" });
@@ -281,7 +281,7 @@ test("generateMigrationDiff excludes target provenance assets from the migration
   await fs.writeFile(path.join(repoPath, "data", "seed.tql"), 'put $seed isa SeedThing,\n  has seedKey "seed-2";\n');
   await fs.writeFile(
     path.join(repoPath, "data", "provenance.tql"),
-    'put $build isa OntologyPackageBuild,\n  has buildKey "fixture-package@1.0.1";\n'
+    'put $version isa OntologyModuleVersion,\n  has moduleVersionKey "https://example.com/fixture-package@1.0.1";\n'
   );
 
   const migrationRelPath = await generateMigrationDiff(repoPath, "1.0.0", "1.0.1");
@@ -289,6 +289,6 @@ test("generateMigrationDiff excludes target provenance assets from the migration
 
   const migrationText = await fs.readFile(path.join(repoPath, migrationRelPath), "utf8");
   assert.match(migrationText, /seed-2/);
-  assert.doesNotMatch(migrationText, /OntologyPackageBuild/);
+  assert.doesNotMatch(migrationText, /OntologyModuleVersion/);
   assert.doesNotMatch(migrationText, /fixture-package@1\.0\.1/);
 });

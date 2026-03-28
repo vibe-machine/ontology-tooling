@@ -166,7 +166,7 @@ test("planPackageRelease rewrites migration metadata for the next release", () =
             phases: [
               {
                 id: "preflight",
-                units: [{ kind: "assert-data", path: "migrations/preflight/assert-v0.5.0-build.tql" }],
+                units: [{ kind: "assert-data", path: "migrations/preflight/assert-v0.5.0-module-version.tql" }],
               },
               {
                 id: "migrate",
@@ -174,7 +174,7 @@ test("planPackageRelease rewrites migration metadata for the next release", () =
               },
               {
                 id: "verify",
-                units: [{ kind: "assert-data", path: "migrations/verify/assert-v0.6.0-build.tql" }],
+                units: [{ kind: "assert-data", path: "migrations/verify/assert-v0.6.0-module-version.tql" }],
               },
             ],
           },
@@ -201,7 +201,7 @@ test("planPackageRelease rewrites migration metadata for the next release", () =
   assert.deepEqual(plan.nextPackageJson.migration.plans[0].phases, [
     {
       id: "preflight",
-      units: [{ kind: "assert-data", path: "migrations/preflight/assert-v0.6.0-build.tql" }],
+      units: [{ kind: "assert-data", path: "migrations/preflight/assert-v0.6.0-module-version.tql" }],
     },
     {
       id: "migrate",
@@ -209,7 +209,7 @@ test("planPackageRelease rewrites migration metadata for the next release", () =
     },
     {
       id: "verify",
-      units: [{ kind: "assert-data", path: "migrations/verify/assert-v0.7.0-build.tql" }],
+      units: [{ kind: "assert-data", path: "migrations/verify/assert-v0.7.0-module-version.tql" }],
     },
   ]);
 });
@@ -260,6 +260,10 @@ async function createFixtureRepo(t, { withRemote = false, withMigration = false,
   const packageJson = {
     name: "fixture-package",
     version: "1.0.0",
+    upstream: {
+      repoUrl: "https://example.com/fixture-package",
+      commit: "abc123",
+    },
     schemas: [{ name: "fixture", file: "schema/fixture.tql" }],
     data: dataFiles,
     manifests: ["manifests/fixture-package-v1.0.0.package-manifest.json"],
@@ -295,7 +299,7 @@ async function createFixtureRepo(t, { withRemote = false, withMigration = false,
           phases: [
             {
               id: "preflight",
-              units: [{ kind: "assert-data", path: "migrations/preflight/assert-v1.0.0-build.tql" }],
+              units: [{ kind: "assert-data", path: "migrations/preflight/assert-v1.0.0-module-version.tql" }],
             },
             {
               id: "migrate",
@@ -303,7 +307,7 @@ async function createFixtureRepo(t, { withRemote = false, withMigration = false,
             },
             {
               id: "verify",
-              units: [{ kind: "assert-data", path: "migrations/verify/assert-v1.0.0-build.tql" }],
+              units: [{ kind: "assert-data", path: "migrations/verify/assert-v1.0.0-module-version.tql" }],
             },
           ],
         },
@@ -482,9 +486,9 @@ test("executeRelease strips migration metadata when no migration diff is generat
 
   const packageJson = JSON.parse(await fs.readFile(path.join(repoPath, "package.json"), "utf8"));
   assert.equal(packageJson.migration, undefined);
-  await assert.rejects(fs.access(path.join(repoPath, "migrations", "preflight", "assert-v1.0.0-build.tql")));
+  await assert.rejects(fs.access(path.join(repoPath, "migrations", "preflight", "assert-v1.0.0-module-version.tql")));
   await assert.rejects(fs.access(path.join(repoPath, "migrations", "v1.0.0-to-v1.0.1.tql")));
-  await assert.rejects(fs.access(path.join(repoPath, "migrations", "verify", "assert-v1.0.1-build.tql")));
+  await assert.rejects(fs.access(path.join(repoPath, "migrations", "verify", "assert-v1.0.1-module-version.tql")));
 });
 
 test("executeRelease updates migration metadata and emits migration assertion files", async (t) => {
@@ -500,7 +504,7 @@ test("executeRelease updates migration metadata and emits migration assertion fi
   assert.equal(packageJson.migration.plans[0].to, "1.0.1");
   assert.equal(
     packageJson.migration.plans[0].phases[0].units[0].path,
-    "migrations/preflight/assert-v1.0.0-build.tql"
+    "migrations/preflight/assert-v1.0.0-module-version.tql"
   );
   assert.equal(
     packageJson.migration.plans[0].phases[1].units[0].path,
@@ -508,10 +512,10 @@ test("executeRelease updates migration metadata and emits migration assertion fi
   );
   assert.equal(
     packageJson.migration.plans[0].phases[2].units[0].path,
-    "migrations/verify/assert-v1.0.1-build.tql"
+    "migrations/verify/assert-v1.0.1-module-version.tql"
   );
 
-  await assert.doesNotReject(fs.access(path.join(repoPath, "migrations", "preflight", "assert-v1.0.0-build.tql")));
+  await assert.doesNotReject(fs.access(path.join(repoPath, "migrations", "preflight", "assert-v1.0.0-module-version.tql")));
   await assert.doesNotReject(fs.access(path.join(repoPath, "migrations", "v1.0.0-to-v1.0.1.tql")));
-  await assert.doesNotReject(fs.access(path.join(repoPath, "migrations", "verify", "assert-v1.0.1-build.tql")));
+  await assert.doesNotReject(fs.access(path.join(repoPath, "migrations", "verify", "assert-v1.0.1-module-version.tql")));
 });
