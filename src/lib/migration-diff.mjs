@@ -197,6 +197,29 @@ function getFileAtTag(repoPath, tag, relativePath) {
   }
 }
 
+function provenanceAssetPathsFromPackageJson(packageJson) {
+  const { provenance } = packageJson;
+  const assetPaths = new Set();
+
+  if (Array.isArray(provenance)) {
+    for (const file of provenance) assetPaths.add(file);
+  } else if (typeof provenance === "object" && provenance) {
+    const files = Array.isArray(provenance.files) ? [...provenance.files] : [];
+    if (typeof provenance.manifest === "string") {
+      files.push(provenance.manifest);
+    }
+    for (const file of files) assetPaths.add(file);
+  }
+
+  for (const generatedArtifactPath of packageJson.assembly?.generatedArtifacts ?? []) {
+    if (/(^|\/)[^/]*provenance\.tql$/.test(generatedArtifactPath)) {
+      assetPaths.add(generatedArtifactPath);
+    }
+  }
+
+  return assetPaths;
+}
+
 /**
  * Generate a migration diff between two versions of a package.
  * Compares data files from the previous git tag against the current working tree.
@@ -209,7 +232,8 @@ function getFileAtTag(repoPath, tag, relativePath) {
 export async function generateMigrationDiff(repoPath, fromVersion, toVersion) {
   const packageJsonPath = path.join(repoPath, "package.json");
   const packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf8"));
-  const dataFiles = packageJson.data ?? [];
+  const provenanceAssetPaths = provenanceAssetPathsFromPackageJson(packageJson);
+  const dataFiles = (packageJson.data ?? []).filter((dataFile) => !provenanceAssetPaths.has(dataFile));
 
   if (dataFiles.length === 0) return null;
 
@@ -299,6 +323,7 @@ export const testing = {
   extractGroupKey,
   groupPutStatements,
   parseHasClauses,
+  provenanceAssetPathsFromPackageJson,
   resolvePreambles,
   splitPutStatements,
 };

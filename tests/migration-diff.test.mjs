@@ -1,9 +1,40 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { execFileSync } from "node:child_process";
 
-import { testing } from "../src/lib/migration-diff.mjs";
+import { generateMigrationDiff, testing } from "../src/lib/migration-diff.mjs";
 
-const { splitPutStatements, groupPutStatements, extractGroupKey, resolvePreambles, parseHasClauses, diffEntityGroup } = testing;
+const {
+  splitPutStatements,
+  groupPutStatements,
+  extractGroupKey,
+  resolvePreambles,
+  parseHasClauses,
+  diffEntityGroup,
+  provenanceAssetPathsFromPackageJson,
+} = testing;
+
+test("provenanceAssetPathsFromPackageJson supports array and object manifest forms", () => {
+  assert.deepEqual(
+    [...provenanceAssetPathsFromPackageJson({ provenance: ["data/build.tql"] })],
+    ["data/build.tql"]
+  );
+  assert.deepEqual(
+    [...provenanceAssetPathsFromPackageJson({
+      provenance: { files: ["data/build.tql"], manifest: "manifests/build.package-manifest.json" },
+    })].sort(),
+    ["data/build.tql", "manifests/build.package-manifest.json"].sort()
+  );
+  assert.deepEqual(
+    [...provenanceAssetPathsFromPackageJson({
+      assembly: { generatedArtifacts: ["data/example-provenance.tql", "data/example-schema-docs.tql"] },
+    })],
+    ["data/example-provenance.tql"]
+  );
+});
 
 test("splitPutStatements parses multi-line put statements", () => {
   const text = `
@@ -215,4 +246,49 @@ put (resource: $r3, module: $module) isa inModule;
   // $r3 is new → put statement
   assert.equal(newPuts.length, 1);
   assert.equal(newPuts[0].variable, "r3");
+});
+
+test("generateMigrationDiff excludes target provenance assets from the migration file", async (t) => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "ontology-migration-diff-"));
+  t.after(async () => {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  });
+
+  const repoPath = path.join(tempRoot, "repo");
+  await fs.mkdir(path.join(repoPath, "data"), { recursive: true });
+
+  const packageJson = {
+    name: "fixture-package",
+    version: "1.0.1",
+    data: ["data/seed.tql", "data/provenance.tql"],
+    provenance: ["data/provenance.tql"],
+  };
+
+  await fs.writeFile(path.join(repoPath, "package.json"), `${JSON.stringify(packageJson, null, 2)}\n`);
+  await fs.writeFile(path.join(repoPath, "data", "seed.tql"), 'put $seed isa SeedThing,\n  has seedKey "seed-1";\n');
+  await fs.writeFile(
+    path.join(repoPath, "data", "provenance.tql"),
+    'put $build isa OntologyPackageBuild,\n  has buildKey "fixture-package@1.0.0";\n'
+  );
+
+  execFileSync("git", ["init", "-b", "main"], { cwd: repoPath, stdio: "ignore" });
+  execFileSync("git", ["config", "user.name", "Fixture"], { cwd: repoPath, stdio: "ignore" });
+  execFileSync("git", ["config", "user.email", "fixture@example.com"], { cwd: repoPath, stdio: "ignore" });
+  execFileSync("git", ["add", "."], { cwd: repoPath, stdio: "ignore" });
+  execFileSync("git", ["commit", "-m", "Initial fixture"], { cwd: repoPath, stdio: "ignore" });
+  execFileSync("git", ["tag", "v1.0.0"], { cwd: repoPath, stdio: "ignore" });
+
+  await fs.writeFile(path.join(repoPath, "data", "seed.tql"), 'put $seed isa SeedThing,\n  has seedKey "seed-2";\n');
+  await fs.writeFile(
+    path.join(repoPath, "data", "provenance.tql"),
+    'put $build isa OntologyPackageBuild,\n  has buildKey "fixture-package@1.0.1";\n'
+  );
+
+  const migrationRelPath = await generateMigrationDiff(repoPath, "1.0.0", "1.0.1");
+  assert.equal(migrationRelPath, "migrations/v1.0.0-to-v1.0.1.tql");
+
+  const migrationText = await fs.readFile(path.join(repoPath, migrationRelPath), "utf8");
+  assert.match(migrationText, /seed-2/);
+  assert.doesNotMatch(migrationText, /OntologyPackageBuild/);
+  assert.doesNotMatch(migrationText, /fixture-package@1\.0\.1/);
 });
