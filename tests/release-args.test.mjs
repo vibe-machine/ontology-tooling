@@ -241,7 +241,7 @@ test("planPackageRelease supports resuming a release when the explicit version m
   assert.deepEqual(plan.nextPackageJson, packageJson);
 });
 
-async function createFixtureRepo(t, { withRemote = false, withMigration = false } = {}) {
+async function createFixtureRepo(t, { withRemote = false, withMigration = false, withDataDiff = false } = {}) {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "ontology-release-"));
   t.after(async () => {
     await fs.rm(tempRoot, { recursive: true, force: true });
@@ -252,17 +252,24 @@ async function createFixtureRepo(t, { withRemote = false, withMigration = false 
   await fs.mkdir(path.join(repoPath, "manifests"), { recursive: true });
   await fs.mkdir(path.join(repoPath, "data"), { recursive: true });
 
+  const dataFiles = ["data/fixture-provenance.tql"];
+  if (withDataDiff) {
+    dataFiles.push("data/fixture-docs.tql");
+  }
+
   const packageJson = {
     name: "fixture-package",
     version: "1.0.0",
     schemas: [{ name: "fixture", file: "schema/fixture.tql" }],
-    data: ["data/fixture-provenance.tql"],
+    data: dataFiles,
     manifests: ["manifests/fixture-package-v1.0.0.package-manifest.json"],
     provenance: {
       manifest: "manifests/fixture-package-v1.0.0.package-manifest.json",
+      files: ["data/fixture-provenance.tql"],
     },
     assembly: {
       generatedArtifacts: [
+        "data/fixture-provenance.tql",
         "manifests/fixture-package-v1.0.0.package-manifest.json",
         "manifests/fixture-package-v1.0.0.report.json",
       ],
@@ -316,6 +323,12 @@ async function createFixtureRepo(t, { withRemote = false, withMigration = false 
     path.join(repoPath, "data", "fixture-provenance.tql"),
     'put $r1 isa SchemaResource,\n  has docKey "fixture-build@1.0.0";\n'
   );
+  if (withDataDiff) {
+    await fs.writeFile(
+      path.join(repoPath, "data", "fixture-docs.tql"),
+      'put $r2 isa SchemaResource,\n  has docKey "fixture-docs@1.0.0";\n'
+    );
+  }
 
   await fs.writeFile(
     path.join(repoPath, "tools", "package_contract", "refresh_package_contract.mjs"),
@@ -327,6 +340,11 @@ await fs.writeFile(
   manifestPath,
   JSON.stringify({ package: { name: packageJson.name, version: packageJson.version } }, null, 2) + "\\n"
 );
+${withDataDiff ? `await fs.writeFile(
+  "data/fixture-docs.tql",
+  'put $r2 isa SchemaResource,\\n  has docKey "fixture-docs@' + packageJson.version + '";\\n'
+);
+` : ""}
 `
   );
   await fs.writeFile(
@@ -455,8 +473,22 @@ test("executeRelease pushes the release commit and tag when push is enabled", as
   assert.match(remoteHeads, /refs\/tags\/v1\.0\.1/);
 });
 
-test("executeRelease updates migration metadata and emits migration assertion files", async (t) => {
+test("executeRelease strips migration metadata when no migration diff is generated", async (t) => {
   const { repoPath } = await createFixtureRepo(t, { withMigration: true });
+  const summary = await executeRelease({ repo: repoPath, bump: "patch", version: null, dryRun: false, push: false });
+
+  assert.equal(summary.nextVersion, "1.0.1");
+  assert.equal(summary.migrationDiff, undefined);
+
+  const packageJson = JSON.parse(await fs.readFile(path.join(repoPath, "package.json"), "utf8"));
+  assert.equal(packageJson.migration, undefined);
+  await assert.rejects(fs.access(path.join(repoPath, "migrations", "preflight", "assert-v1.0.0-build.tql")));
+  await assert.rejects(fs.access(path.join(repoPath, "migrations", "v1.0.0-to-v1.0.1.tql")));
+  await assert.rejects(fs.access(path.join(repoPath, "migrations", "verify", "assert-v1.0.1-build.tql")));
+});
+
+test("executeRelease updates migration metadata and emits migration assertion files", async (t) => {
+  const { repoPath } = await createFixtureRepo(t, { withMigration: true, withDataDiff: true });
   const summary = await executeRelease({ repo: repoPath, bump: "patch", version: null, dryRun: false, push: false });
 
   assert.equal(summary.nextVersion, "1.0.1");

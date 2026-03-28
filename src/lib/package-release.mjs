@@ -318,6 +318,13 @@ async function removePath(targetPath) {
   await fs.rm(targetPath, { recursive: true, force: true });
 }
 
+function stripMigrationMetadata(packageJson) {
+  if (!packageJson || typeof packageJson !== "object") return packageJson;
+  const nextPackageJson = structuredClone(packageJson);
+  delete nextPackageJson.migration;
+  return nextPackageJson;
+}
+
 async function withValidationWorktree(repoPath, callback) {
   const workspaceRoot = path.dirname(repoPath);
   const tempRoot = await fs.mkdtemp(path.join(workspaceRoot, ".ontology-release-check-"));
@@ -416,6 +423,14 @@ export async function executeRelease(options) {
         if (migrationPath) {
           await writeMigrationAssertions(repo, packageJson.name, plan.currentVersion, plan.nextVersion);
           summary.migrationDiff = migrationPath;
+          return;
+        }
+
+        const packageJsonPath = path.join(repo, "package.json");
+        const currentPackageJson = await readJson(packageJsonPath);
+        if (currentPackageJson.migration) {
+          await writeJson(packageJsonPath, stripMigrationMetadata(currentPackageJson));
+          runPackageScript(repo, "refresh:package-contract");
         }
       },
     });
