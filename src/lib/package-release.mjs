@@ -72,6 +72,13 @@ function semverMinorRange(version) {
   return `${parsed.major}.${parsed.minor}.x`;
 }
 
+function hasUserAuthoredPhases(plan) {
+  if (!Array.isArray(plan.phases)) return false;
+  return plan.phases.some((phase) =>
+    Array.isArray(phase.units) && phase.units.some((unit) => unit.kind === "schema")
+  );
+}
+
 function rewriteMigrationMetadata(nextPackageJson, currentVersion, nextVersion) {
   const migration = nextPackageJson.migration;
   if (!migration || typeof migration !== "object") return;
@@ -80,31 +87,45 @@ function rewriteMigrationMetadata(nextPackageJson, currentVersion, nextVersion) 
 
   if (!Array.isArray(migration.plans) || migration.plans.length === 0) return;
 
-  migration.plans = migration.plans.map((plan) => ({
-    ...plan,
-    id: `${nextPackageJson.name}-${currentVersion}-to-${nextVersion}`,
-    from: currentVersion,
-    to: nextVersion,
-    snapshot: {
-      ...(plan.snapshot ?? {}),
-      required: plan.mode === "replace" ? true : plan.snapshot?.required ?? false,
-      label: `pre-${nextPackageJson.name}-${nextVersion}-migration`,
-    },
-    phases: [
-      {
-        id: "preflight",
-        units: [{ kind: "assert-data", path: `migrations/preflight/assert-v${currentVersion}-module-version.tql` }],
+  migration.plans = migration.plans.map((plan) => {
+    const base = {
+      ...plan,
+      id: `${nextPackageJson.name}-${currentVersion}-to-${nextVersion}`,
+      from: plan.from,
+      to: nextVersion,
+      snapshot: {
+        ...(plan.snapshot ?? {}),
+        required: plan.mode === "replace" ? true : plan.snapshot?.required ?? false,
+        label: `pre-${nextPackageJson.name}-${nextVersion}-migration`,
       },
-      {
-        id: "migrate",
-        units: [{ kind: "write", path: `migrations/v${currentVersion}-to-v${nextVersion}.tql` }],
-      },
-      {
-        id: "verify",
-        units: [{ kind: "assert-data", path: `migrations/verify/assert-v${nextVersion}-module-version.tql` }],
-      },
-    ],
-  }));
+    };
+
+    // Preserve user-authored phases that contain schema migrations.
+    // Only generate standard preflight/migrate/verify phases when
+    // the plan has no custom schema units.
+    if (hasUserAuthoredPhases(plan)) {
+      return base;
+    }
+
+    return {
+      ...base,
+      from: currentVersion,
+      phases: [
+        {
+          id: "preflight",
+          units: [{ kind: "assert-data", path: `migrations/preflight/assert-v${currentVersion}-module-version.tql` }],
+        },
+        {
+          id: "migrate",
+          units: [{ kind: "write", path: `migrations/v${currentVersion}-to-v${nextVersion}.tql` }],
+        },
+        {
+          id: "verify",
+          units: [{ kind: "assert-data", path: `migrations/verify/assert-v${nextVersion}-module-version.tql` }],
+        },
+      ],
+    };
+  });
 }
 
 async function writeMigrationAssertions(repoPath, packageJson, currentVersion, nextVersion) {
