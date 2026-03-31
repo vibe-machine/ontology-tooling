@@ -442,10 +442,13 @@ export async function executeRelease(options) {
           return;
         }
 
+        // Structured migration plans (with schema phases) must survive into the
+        // released package.json so the Ontology plugin can detect and execute them
+        // on upgrade. Only run an extra refresh if the migration field is present,
+        // to ensure checksums reflect the final state with migration metadata intact.
         const packageJsonPath = path.join(repo, "package.json");
         const currentPackageJson = await readJson(packageJsonPath);
         if (currentPackageJson.migration) {
-          await writeJson(packageJsonPath, stripMigrationMetadata(currentPackageJson));
           runPackageScript(repo, "refresh:package-contract");
         }
       },
