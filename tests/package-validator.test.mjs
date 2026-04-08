@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -19,10 +20,17 @@ async function createFixtureRepo(t, packageJson, files) {
   }
 
   await fs.writeFile(path.join(root, "package.json"), `${JSON.stringify(packageJson, null, 2)}\n`);
+  await fs.writeFile(path.join(root, ".gitignore"), "node_modules/\n");
+  execFileSync("git", ["init", "-b", "main"], { cwd: root, stdio: "ignore" });
+  execFileSync("git", ["config", "user.name", "Fixture"], { cwd: root, stdio: "ignore" });
+  execFileSync("git", ["config", "user.email", "fixture@example.com"], { cwd: root, stdio: "ignore" });
+  execFileSync("git", ["add", "."], { cwd: root, stdio: "ignore" });
+  execFileSync("git", ["commit", "-m", "Initial fixture"], { cwd: root, stdio: "ignore" });
   return root;
 }
 
 function basePackageJson(overrides = {}) {
+  const { scripts: overrideScripts, ...restOverrides } = overrides;
   return {
     name: "custom",
     displayName: "custom",
@@ -31,7 +39,7 @@ function basePackageJson(overrides = {}) {
       "refresh:package-contract": "node refresh.mjs",
       "validate:bootstrap": "node validate-bootstrap.mjs",
       "test:typedb-bootstrap": "node test-bootstrap.mjs",
-      ...(overrides.scripts ?? {}),
+      ...(overrideScripts ?? {}),
     },
     schemas: [{ name: "custom", file: "schema/custom.tql" }],
     data: ["data/seed.tql"],
@@ -43,7 +51,7 @@ function basePackageJson(overrides = {}) {
     assembly: {
       loadOrder: ["schema/custom.tql", "data/seed.tql", "manifests/resources.json"],
     },
-    ...overrides,
+    ...restOverrides,
   };
 }
 
@@ -110,4 +118,81 @@ test("validatePackageContract requires live migration testing when migrations ar
     validatePackageContract(repoPath),
     /scripts must define 'test:typedb-migration'/
   );
+});
+
+test("validatePackageContract rejects migration plans that do not cover the previous release tag", async (t) => {
+  const repoPath = await createFixtureRepo(
+    t,
+    basePackageJson({
+      version: "1.0.1",
+      scripts: {
+        "test:typedb-migration": "node test-migration.mjs",
+      },
+      migration: {
+        format: 1,
+        plans: [
+          {
+            id: "custom-0.8.x-to-1.0.1",
+            from: "0.8.x",
+            to: "1.0.1",
+            mode: "compatible",
+            phases: [
+              {
+                id: "write",
+                units: [{ kind: "write", path: "migrations/v0.8.0-to-v1.0.1.tql" }],
+              },
+            ],
+          },
+        ],
+      },
+    }),
+    {
+      ...baseFiles,
+      "migrations/v0.8.0-to-v1.0.1.tql": "match $x isa thing; insert $y isa thing;",
+    }
+  );
+
+  execFileSync("git", ["tag", "v1.0.0"], { cwd: repoPath, stdio: "ignore" });
+
+  await assert.rejects(
+    validatePackageContract(repoPath),
+    /migration plans do not cover previous release 1\.0\.0 -> 1\.0\.1/
+  );
+});
+
+test("validatePackageContract accepts migration plans that cover the previous release tag", async (t) => {
+  const repoPath = await createFixtureRepo(
+    t,
+    basePackageJson({
+      version: "1.0.1",
+      scripts: {
+        "test:typedb-migration": "node test-migration.mjs",
+      },
+      migration: {
+        format: 1,
+        plans: [
+          {
+            id: "custom-1.0.x-to-1.0.1",
+            from: ">=1.0.0 <1.0.1",
+            to: "1.0.1",
+            mode: "compatible",
+            phases: [
+              {
+                id: "write",
+                units: [{ kind: "write", path: "migrations/v1.0.0-to-v1.0.1.tql" }],
+              },
+            ],
+          },
+        ],
+      },
+    }),
+    {
+      ...baseFiles,
+      "migrations/v1.0.0-to-v1.0.1.tql": "match $x isa thing; insert $y isa thing;",
+    }
+  );
+
+  execFileSync("git", ["tag", "v1.0.0"], { cwd: repoPath, stdio: "ignore" });
+
+  await assert.doesNotReject(validatePackageContract(repoPath));
 });

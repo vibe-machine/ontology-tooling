@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 
-import { validateMigrationContract } from "./migration-contract.mjs";
+import { testing as migrationTesting, validateMigrationContract } from "./migration-contract.mjs";
 
 function isNonEmptyString(value) {
   return typeof value === "string" && value.trim().length > 0;
@@ -22,6 +23,12 @@ function parseSemver(value) {
     minor: Number(match[2]),
     patch: Number(match[3]),
   };
+}
+
+function compareSemver(lhs, rhs) {
+  if (lhs.major !== rhs.major) return lhs.major - rhs.major;
+  if (lhs.minor !== rhs.minor) return lhs.minor - rhs.minor;
+  return lhs.patch - rhs.patch;
 }
 
 function packageAssetPaths(packageJson) {
@@ -139,6 +146,51 @@ function validateReleaseScripts(packageJson) {
   }
 }
 
+function listReleaseTags(repoPath) {
+  const output = execFileSync("git", ["tag", "--list", "v*.*.*"], {
+    cwd: repoPath,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  }).trim();
+
+  if (!output) return [];
+
+  return output
+    .split("\n")
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+    .map((tag) => ({ tag, version: parseSemver(tag) }))
+    .sort((lhs, rhs) => compareSemver(lhs.version, rhs.version));
+}
+
+function previousReleaseVersion(repoPath, currentVersion) {
+  const current = parseSemver(currentVersion);
+  const tags = listReleaseTags(repoPath);
+  const previous = tags.filter(({ version }) => compareSemver(version, current) < 0).at(-1);
+  return previous?.version ?? null;
+}
+
+function formatSemver(version) {
+  return `${version.major}.${version.minor}.${version.patch}`;
+}
+
+function validatePreviousReleaseCoverage(repoPath, packageJson) {
+  if (!packageJson.migration?.plans?.length) return;
+
+  const previous = previousReleaseVersion(repoPath, packageJson.version);
+  if (!previous) return;
+
+  const covered = packageJson.migration.plans.some((plan) =>
+    migrationTesting.semverSatisfiesRange(previous, plan.from)
+  );
+
+  if (!covered) {
+    throw new Error(
+      `migration plans do not cover previous release ${formatSemver(previous)} -> ${packageJson.version}`
+    );
+  }
+}
+
 export async function validatePackageContract(repoPath) {
   const packageJsonPath = path.join(repoPath, "package.json");
   const packageJson = await readJson(packageJsonPath);
@@ -168,12 +220,15 @@ export async function validatePackageContract(repoPath) {
 
   await validateAssembly(repoPath, packageJson);
   await validateMigrationContract(repoPath);
+  validatePreviousReleaseCoverage(repoPath, packageJson);
 
   return packageJson;
 }
 
 export const testing = {
+  compareSemver,
   packageAssetPaths,
   parseSemver,
+  previousReleaseVersion,
   requiredReleaseScripts,
 };
