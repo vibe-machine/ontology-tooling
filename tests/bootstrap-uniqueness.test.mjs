@@ -59,6 +59,7 @@ async function createFixtureRepo(t, { brokenRefresh = false } = {}) {
 
   const packageJson = {
     name: "fixture-package",
+    displayName: "Fixture Package",
     version: "1.0.0",
     upstream: {
       repoUrl: "https://example.com/fixture-package",
@@ -71,7 +72,11 @@ async function createFixtureRepo(t, { brokenRefresh = false } = {}) {
       manifest: "manifests/fixture-package-v1.0.0.package-manifest.json",
     },
     assembly: {
-      loadOrder: ["schema/package-provenance.tql", "data/fixture-provenance.tql"],
+      loadOrder: [
+        "schema/package-provenance.tql",
+        "data/fixture-provenance.tql",
+        "manifests/fixture-package-v1.0.0.package-manifest.json",
+      ],
       generatedArtifacts: ["manifests/fixture-package-v1.0.0.package-manifest.json"],
     },
     scripts: {

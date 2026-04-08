@@ -4,10 +4,9 @@ import path from "node:path";
 
 import { validateBootstrapUniqueness } from "./bootstrap-uniqueness.mjs";
 import { generateMigrationDiff } from "./migration-diff.mjs";
-import { validateMigrationContract } from "./migration-contract.mjs";
+import { validatePackageContract } from "./package-validator.mjs";
 import { resolveReleaseVersion } from "./versions.mjs";
 
-const REQUIRED_RELEASE_SCRIPTS = ["refresh:package-contract", "validate:bootstrap", "test:typedb-bootstrap"];
 const OPTIONAL_RELEASE_SCRIPTS = ["test:typedb-migration"];
 
 function run(command, args, { cwd, captureOutput = false } = {}) {
@@ -87,10 +86,17 @@ function rewriteMigrationMetadata(nextPackageJson, currentVersion, nextVersion) 
 
   if (!Array.isArray(migration.plans) || migration.plans.length === 0) return;
 
-  migration.plans = migration.plans.map((plan) => {
+  const defaultId = `${nextPackageJson.name}-${currentVersion}-to-${nextVersion}`;
+
+  migration.plans = migration.plans.map((plan, index) => {
+    // Preserve user-authored plan IDs when there are multiple plans to
+    // avoid duplicate IDs. For single-plan packages, use the standard
+    // generated ID.
+    const planId = migration.plans.length > 1 ? plan.id : defaultId;
+
     const base = {
       ...plan,
-      id: `${nextPackageJson.name}-${currentVersion}-to-${nextVersion}`,
+      id: planId,
       from: plan.from,
       to: nextVersion,
       snapshot: {
@@ -226,6 +232,16 @@ export function planPackageRelease(packageJson, { bump, version }) {
     });
   }
 
+  if (Array.isArray(nextPackageJson.assembly?.loadOrder)) {
+    nextPackageJson.assembly.loadOrder = nextPackageJson.assembly.loadOrder.map((entry) => {
+      const rewritten = replaceVersionToken(entry, currentVersion, nextVersion);
+      if (rewritten !== entry) {
+        renamePlan.push({ from: entry, to: rewritten });
+      }
+      return rewritten;
+    });
+  }
+
   // Rewrite versioned paths inside scripts (e.g. --out manifests/pkg-v1.0.0.json)
   if (nextPackageJson.scripts) {
     for (const key of Object.keys(nextPackageJson.scripts)) {
@@ -290,15 +306,6 @@ function assertCleanWorkingTree(repoPath) {
   }
 }
 
-function assertReleaseScripts(packageJson) {
-  const scripts = packageJson.scripts ?? {};
-  for (const name of REQUIRED_RELEASE_SCRIPTS) {
-    if (typeof scripts[name] !== "string" || scripts[name].trim().length === 0) {
-      throw new Error(`Target repo is missing required script: ${name}`);
-    }
-  }
-}
-
 function assertTagDoesNotExist(repoPath, tagName) {
   const tags = run("git", ["tag", "--list", tagName], { cwd: repoPath, captureOutput: true }).trim();
   if (tags === tagName) {
@@ -313,7 +320,9 @@ function runPackageScript(repoPath, scriptName) {
 function releaseScriptsToRun(packageJson) {
   const scripts = packageJson.scripts ?? {};
   return [
-    ...REQUIRED_RELEASE_SCRIPTS,
+    "refresh:package-contract",
+    "validate:bootstrap",
+    "test:typedb-bootstrap",
     ...OPTIONAL_RELEASE_SCRIPTS.filter((name) => typeof scripts[name] === "string" && scripts[name].trim().length > 0),
   ];
 }
@@ -333,13 +342,13 @@ function assertHeadMatchesReleaseCommit(repoPath, packageName, version) {
 }
 
 async function runReleaseValidation(repoPath, { afterRefresh } = {}) {
-  const packageJson = await readJson(path.join(repoPath, "package.json"));
+  let packageJson = await readJson(path.join(repoPath, "package.json"));
   runPackageScript(repoPath, "refresh:package-contract");
 
   if (afterRefresh) await afterRefresh(repoPath);
 
+  packageJson = await validatePackageContract(repoPath);
   await validateBootstrapUniqueness(repoPath);
-  await validateMigrationContract(repoPath);
 
   for (const scriptName of releaseScriptsToRun(packageJson)) {
     if (scriptName === "refresh:package-contract") continue;
@@ -402,7 +411,6 @@ export async function executeRelease(options) {
   const repoPath = path.resolve(options.repo);
   const packageJsonPath = path.join(repoPath, "package.json");
   const packageJson = await readJson(packageJsonPath);
-  assertReleaseScripts(packageJson);
   const scriptsToRun = releaseScriptsToRun(packageJson);
 
   if (options.validateOnly) {
@@ -463,13 +471,11 @@ export async function executeRelease(options) {
           return;
         }
 
-        // Structured migration plans (with schema phases) must survive into the
-        // released package.json so the Ontology plugin can detect and execute them
-        // on upgrade. Only run an extra refresh if the migration field is present,
-        // to ensure checksums reflect the final state with migration metadata intact.
         const packageJsonPath = path.join(repo, "package.json");
         const currentPackageJson = await readJson(packageJsonPath);
         if (currentPackageJson.migration) {
+          await writeJson(packageJsonPath, stripMigrationMetadata(currentPackageJson));
+          await removePath(path.join(repo, "migrations"));
           runPackageScript(repo, "refresh:package-contract");
         }
       },

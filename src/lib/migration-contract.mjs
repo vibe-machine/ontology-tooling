@@ -45,6 +45,54 @@ function validateSemverRange(range) {
   }
 }
 
+function semverSatisfiesClause(version, clause) {
+  if (clause.endsWith(".x")) {
+    const prefix = parseSemver(clause.replace(/\.x$/, ".0"));
+    return version.major === prefix.major && version.minor === prefix.minor;
+  }
+
+  if (clause.startsWith(">=")) {
+    return compareSemver(version, parseSemver(clause.slice(2))) >= 0;
+  }
+  if (clause.startsWith("<=")) {
+    return compareSemver(version, parseSemver(clause.slice(2))) <= 0;
+  }
+  if (clause.startsWith(">")) {
+    return compareSemver(version, parseSemver(clause.slice(1))) > 0;
+  }
+  if (clause.startsWith("<")) {
+    return compareSemver(version, parseSemver(clause.slice(1))) < 0;
+  }
+
+  return compareSemver(version, parseSemver(clause)) === 0;
+}
+
+function semverSatisfiesRange(version, range) {
+  validateSemverRange(range);
+  return range.trim().split(/\s+/).every((clause) => semverSatisfiesClause(version, clause));
+}
+
+function versionedMigrationRange(relativePath) {
+  const filename = path.basename(relativePath);
+  if (!filename.endsWith(".tql")) return null;
+
+  const stem = filename.slice(0, -4);
+  const parts = stem.split("-to-");
+  if (parts.length !== 2) return null;
+
+  const fromText = parts[0].startsWith("v") ? parts[0].slice(1) : parts[0];
+  const toText = parts[1].startsWith("v") ? parts[1].slice(1) : parts[1];
+
+  try {
+    return {
+      from: parseSemver(fromText),
+      to: parseSemver(toText),
+    };
+  } catch {
+    return null;
+  }
+}
+
 function packageAssetPaths(packageJson) {
   const schemas = Array.isArray(packageJson.schemas) ? packageJson.schemas.map((entry) => entry.file) : [];
   const data = Array.isArray(packageJson.data) ? packageJson.data : [];
@@ -128,6 +176,19 @@ function validateUnitShape(plan, phase, unit) {
   if (typeof unit.path !== "string" || unit.path.trim().length === 0) {
     throw new Error(`migration plan '${plan.id}' phase '${phase.id}' has a unit with empty path`);
   }
+
+  const fileRange = versionedMigrationRange(unit.path);
+  if (!fileRange) return;
+
+  if (compareSemver(fileRange.to, parseSemver(plan.to)) !== 0) {
+    throw new Error(`migration plan '${plan.id}' unit '${unit.path}' must target version ${plan.to}`);
+  }
+
+  if (!semverSatisfiesRange(fileRange.from, plan.from)) {
+    throw new Error(
+      `migration plan '${plan.id}' unit '${unit.path}' starts from ${fileRange.from.major}.${fileRange.from.minor}.${fileRange.from.patch}, which is outside source range '${plan.from}'`
+    );
+  }
 }
 
 export async function validateMigrationContract(repoPath) {
@@ -190,6 +251,8 @@ export const testing = {
   compareSemver,
   packageAssetPaths,
   parseSemver,
+  semverSatisfiesRange,
   validatePlanShape,
   validateSemverRange,
+  versionedMigrationRange,
 };

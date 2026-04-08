@@ -130,3 +130,67 @@ test("validateMigrationContract rejects plans targeting a different package vers
 
   await assert.rejects(validateMigrationContract(repoPath), /expected package version 0.60.0/);
 });
+
+test("validateMigrationContract rejects versioned migration files targeting the wrong package version", async (t) => {
+  const repoPath = await createFixtureRepo(
+    t,
+    {
+      name: "beads",
+      version: "0.60.0",
+      migration: {
+        format: 1,
+        plans: [
+          {
+            id: "beads-0.59-to-0.60",
+            from: "0.59.x",
+            to: "0.60.0",
+            mode: "compatible",
+            phases: [
+              {
+                id: "write",
+                units: [{ kind: "write", path: "migrations/v0.59.0-to-v0.60.1.tql" }],
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      "migrations/v0.59.0-to-v0.60.1.tql": "match $x isa thing; insert $y isa thing;",
+    }
+  );
+
+  await assert.rejects(validateMigrationContract(repoPath), /must target version 0.60.0/);
+});
+
+test("validateMigrationContract rejects versioned migration files outside the source range", async (t) => {
+  const repoPath = await createFixtureRepo(
+    t,
+    {
+      name: "beads",
+      version: "0.60.0",
+      migration: {
+        format: 1,
+        plans: [
+          {
+            id: "beads-0.59-to-0.60",
+            from: ">=0.59.1 <0.60.0",
+            to: "0.60.0",
+            mode: "compatible",
+            phases: [
+              {
+                id: "write",
+                units: [{ kind: "write", path: "migrations/v0.59.0-to-v0.60.0.tql" }],
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      "migrations/v0.59.0-to-v0.60.0.tql": "match $x isa thing; insert $y isa thing;",
+    }
+  );
+
+  await assert.rejects(validateMigrationContract(repoPath), /outside source range '>=0.59.1 <0.60.0'/);
+});

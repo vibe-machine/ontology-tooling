@@ -25,9 +25,12 @@ This repo should not own:
 - `src/lib/` holds reusable internal helpers
 - releases are executed from a local workstation or agent environment, not GitHub Actions
 
-## First Command
+## Command Boundary
 
-The first production command is `ontology-release`.
+The foundational production commands are:
+
+- `ontology-validate-package` for authoritative package-contract validation
+- `ontology-release` for release orchestration on top of that validation
 
 Target contract:
 
@@ -35,11 +38,13 @@ Target contract:
 1. update package version state
 2. rewrite versioned manifest paths
 3. run package refresh
-4. run bootstrap validation
-5. run TypeDB bootstrap validation
-6. create release commit
-7. create matching git tag
-8. push commit and tag
+4. run package-contract validation in `ontology-tooling`
+5. run bootstrap validation
+6. run TypeDB bootstrap validation
+7. run TypeDB migration validation when migrations are declared
+8. create release commit
+9. create matching git tag
+10. push commit and tag
 
 The command expects a target ontology repo to expose:
 

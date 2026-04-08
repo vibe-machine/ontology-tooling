@@ -64,6 +64,10 @@ test("planPackageRelease rewrites versioned manifest references", () => {
         manifest: "manifests/example-v1.0.0.package-manifest.json",
       },
       assembly: {
+        loadOrder: [
+          "schema/example.tql",
+          "manifests/example-v1.0.0.package-manifest.json",
+        ],
         generatedArtifacts: [
           "manifests/example-v1.0.0.package-manifest.json",
           "manifests/example-v1.0.0.report.json",
@@ -83,6 +87,10 @@ test("planPackageRelease rewrites versioned manifest references", () => {
 
   assert.equal(plan.nextVersion, "1.0.1");
   assert.equal(plan.nextPackageJson.provenance.manifest, "manifests/example-v1.0.1.package-manifest.json");
+  assert.deepEqual(plan.nextPackageJson.assembly.loadOrder, [
+    "schema/example.tql",
+    "manifests/example-v1.0.1.package-manifest.json",
+  ]);
   assert.deepEqual(plan.renamePlan, [
     {
       from: "manifests/example-v1.0.0.package-manifest.json",
@@ -259,6 +267,7 @@ async function createFixtureRepo(t, { withRemote = false, withMigration = false,
 
   const packageJson = {
     name: "fixture-package",
+    displayName: "Fixture Package",
     version: "1.0.0",
     upstream: {
       repoUrl: "https://example.com/fixture-package",
@@ -272,6 +281,11 @@ async function createFixtureRepo(t, { withRemote = false, withMigration = false,
       files: ["data/fixture-provenance.tql"],
     },
     assembly: {
+      loadOrder: [
+        "schema/fixture.tql",
+        ...dataFiles,
+        "manifests/fixture-package-v1.0.0.package-manifest.json",
+      ],
       generatedArtifacts: [
         "data/fixture-provenance.tql",
         "manifests/fixture-package-v1.0.0.package-manifest.json",
@@ -313,6 +327,7 @@ async function createFixtureRepo(t, { withRemote = false, withMigration = false,
         },
       ],
     };
+    packageJson.scripts["test:typedb-migration"] = "node tools/package_contract/validate_typedb_migration.mjs";
   }
 
   await fs.writeFile(path.join(repoPath, "package.json"), `${JSON.stringify(packageJson, null, 2)}\n`);
@@ -366,6 +381,26 @@ console.log("bootstrap ok");
     path.join(repoPath, "tools", "package_contract", "validate_typedb_bootstrap.mjs"),
     `console.log("typedb bootstrap ok");\n`
   );
+  if (withMigration) {
+    await fs.mkdir(path.join(repoPath, "migrations", "preflight"), { recursive: true });
+    await fs.mkdir(path.join(repoPath, "migrations", "verify"), { recursive: true });
+    await fs.writeFile(
+      path.join(repoPath, "migrations", "preflight", "assert-v1.0.0-module-version.tql"),
+      "match $x isa thing; limit 1;\n"
+    );
+    await fs.writeFile(
+      path.join(repoPath, "migrations", "v1.0.0-to-v1.0.0.tql"),
+      "match $x isa thing; insert $y isa thing;\n"
+    );
+    await fs.writeFile(
+      path.join(repoPath, "migrations", "verify", "assert-v1.0.0-module-version.tql"),
+      "match $x isa thing; limit 1;\n"
+    );
+    await fs.writeFile(
+      path.join(repoPath, "tools", "package_contract", "validate_typedb_migration.mjs"),
+      `console.log("typedb migration ok");\n`
+    );
+  }
 
   execFileSync("git", ["init", "-b", "main"], { cwd: repoPath, stdio: "ignore" });
   execFileSync("git", ["config", "user.name", "Fixture"], { cwd: repoPath, stdio: "ignore" });
