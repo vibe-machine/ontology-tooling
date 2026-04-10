@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 
+import { validateExecutablePackage } from "./executable-package.mjs";
 import { testing as migrationTesting, validateMigrationContract } from "./migration-contract.mjs";
 
 function isNonEmptyString(value) {
@@ -35,6 +36,9 @@ function packageAssetPaths(packageJson) {
   const schemas = Array.isArray(packageJson.schemas) ? packageJson.schemas.map((entry) => entry.file) : [];
   const data = Array.isArray(packageJson.data) ? packageJson.data : [];
   const manifests = Array.isArray(packageJson.manifests) ? packageJson.manifests : [];
+  const generatedArtifacts = Array.isArray(packageJson.assembly?.generatedArtifacts)
+    ? packageJson.assembly.generatedArtifacts
+    : [];
 
   let provenance = [];
   if (Array.isArray(packageJson.provenance)) {
@@ -47,7 +51,7 @@ function packageAssetPaths(packageJson) {
     }
   }
 
-  return new Set([...schemas, ...data, ...manifests, ...provenance]);
+  return new Set([...schemas, ...data, ...manifests, ...provenance, ...generatedArtifacts]);
 }
 
 function requiredReleaseScripts(packageJson) {
@@ -221,6 +225,7 @@ export async function validatePackageContract(repoPath) {
   await validateAssembly(repoPath, packageJson);
   await validateMigrationContract(repoPath);
   validatePreviousReleaseCoverage(repoPath, packageJson);
+  await validateExecutablePackage(repoPath);
 
   return packageJson;
 }

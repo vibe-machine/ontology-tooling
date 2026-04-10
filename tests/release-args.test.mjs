@@ -249,7 +249,16 @@ test("planPackageRelease supports resuming a release when the explicit version m
   assert.deepEqual(plan.nextPackageJson, packageJson);
 });
 
-async function createFixtureRepo(t, { withRemote = false, withMigration = false, withDataDiff = false } = {}) {
+function repeatedPutFile(count, payloadSize = 256) {
+  return Array.from({ length: count }, (_, index) => `put $r${index} isa SchemaResource,
+  has docKey "doc-${index}",
+  has definition "${"x".repeat(payloadSize)}";`).join("\n\n");
+}
+
+async function createFixtureRepo(
+  t,
+  { withRemote = false, withMigration = false, withDataDiff = false, withLargeDataDiff = false } = {}
+) {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "ontology-release-"));
   t.after(async () => {
     await fs.rm(tempRoot, { recursive: true, force: true });
@@ -261,7 +270,7 @@ async function createFixtureRepo(t, { withRemote = false, withMigration = false,
   await fs.mkdir(path.join(repoPath, "data"), { recursive: true });
 
   const dataFiles = ["data/fixture-provenance.tql"];
-  if (withDataDiff) {
+  if (withDataDiff || withLargeDataDiff) {
     dataFiles.push("data/fixture-docs.tql");
   }
 
@@ -342,10 +351,12 @@ async function createFixtureRepo(t, { withRemote = false, withMigration = false,
     path.join(repoPath, "data", "fixture-provenance.tql"),
     'put $r1 isa SchemaResource,\n  has docKey "fixture-build@1.0.0";\n'
   );
-  if (withDataDiff) {
+  if (withDataDiff || withLargeDataDiff) {
     await fs.writeFile(
       path.join(repoPath, "data", "fixture-docs.tql"),
-      'put $r2 isa SchemaResource,\n  has docKey "fixture-docs@1.0.0";\n'
+      withLargeDataDiff
+        ? `${repeatedPutFile(120)}\n`
+        : 'put $r2 isa SchemaResource,\n  has docKey "fixture-docs@1.0.0";\n'
     );
   }
 
@@ -359,9 +370,11 @@ await fs.writeFile(
   manifestPath,
   JSON.stringify({ package: { name: packageJson.name, version: packageJson.version } }, null, 2) + "\\n"
 );
-${withDataDiff ? `await fs.writeFile(
+${(withDataDiff || withLargeDataDiff) ? `await fs.writeFile(
   "data/fixture-docs.tql",
-  'put $r2 isa SchemaResource,\\n  has docKey "fixture-docs@' + packageJson.version + '";\\n'
+  ${withLargeDataDiff
+    ? `Array.from({ length: 120 }, (_, index) => \`put $r\${index} isa SchemaResource,\\n  has docKey "doc-\${index}",\\n  has definition "${"x".repeat(256)}";\`).join("\\n\\n") + "\\n"`
+    : `'put $r2 isa SchemaResource,\\n  has docKey "fixture-docs@' + packageJson.version + '";\\n'`}
 );
 ` : ""}
 `
@@ -553,4 +566,22 @@ test("executeRelease updates migration metadata and emits migration assertion fi
   await assert.doesNotReject(fs.access(path.join(repoPath, "migrations", "preflight", "assert-v1.0.0-module-version.tql")));
   await assert.doesNotReject(fs.access(path.join(repoPath, "migrations", "v1.0.0-to-v1.0.1.tql")));
   await assert.doesNotReject(fs.access(path.join(repoPath, "migrations", "verify", "assert-v1.0.1-module-version.tql")));
+});
+
+test("executeRelease rewrites oversized write assets into executable apply units before validation", async (t) => {
+  const { repoPath } = await createFixtureRepo(t, { withLargeDataDiff: true });
+  const summary = await executeRelease({ repo: repoPath, bump: "patch", version: null, dryRun: false, push: false });
+
+  assert.equal(summary.nextVersion, "1.0.1");
+
+  const packageJson = JSON.parse(await fs.readFile(path.join(repoPath, "package.json"), "utf8"));
+  const docsEntries = packageJson.data.filter((entry) => entry.includes("/data/fixture-docs/"));
+  assert.ok(docsEntries.length > 1);
+  assert.ok(docsEntries.every((entry) => entry.startsWith("generated/apply-units/data/fixture-docs/")));
+  assert.ok(
+    packageJson.assembly.loadOrder.some((entry) => entry.startsWith("generated/apply-units/data/fixture-docs/"))
+  );
+  for (const relativePath of docsEntries) {
+    await assert.doesNotReject(fs.access(path.join(repoPath, relativePath)));
+  }
 });

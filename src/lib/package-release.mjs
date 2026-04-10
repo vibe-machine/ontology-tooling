@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { validateBootstrapUniqueness } from "./bootstrap-uniqueness.mjs";
+import { prepareExecutablePackage } from "./executable-package.mjs";
 import { generateMigrationDiff } from "./migration-diff.mjs";
 import { validatePackageContract } from "./package-validator.mjs";
 import { resolveReleaseVersion } from "./versions.mjs";
@@ -346,6 +347,7 @@ async function runReleaseValidation(repoPath, { afterRefresh } = {}) {
   runPackageScript(repoPath, "refresh:package-contract");
 
   if (afterRefresh) await afterRefresh(repoPath);
+  await prepareExecutablePackage(repoPath);
 
   packageJson = await validatePackageContract(repoPath);
   await validateBootstrapUniqueness(repoPath);
