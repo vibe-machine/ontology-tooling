@@ -165,6 +165,37 @@ test("prepareExecutablePackage rewrites oversized write files into generated app
   assert.equal(manifestPackageJsonArtifact.sha256, packageJsonHash);
 });
 
+test("prepareExecutablePackage preserves existing generated apply units without nesting them", async (t) => {
+  const repoPath = await createFixtureRepo(
+    t,
+    {
+      name: "fixture",
+      displayName: "fixture",
+      version: "1.0.0",
+      data: ["generated/apply-units/data/docs/0001.tql"],
+      manifests: ["manifests/fixture.package-manifest.json"],
+      provenance: {
+        manifest: "manifests/fixture.package-manifest.json",
+      },
+      assembly: {
+        loadOrder: ["schema/fixture.tql", "generated/apply-units/data/docs/0001.tql"],
+        generatedArtifacts: ["generated/apply-units/data/docs/0001.tql"],
+      },
+      schemas: [{ name: "fixture", file: "schema/fixture.tql" }],
+    },
+    {
+      "schema/fixture.tql": "define\nattribute docKey, value string;\nentity SchemaResource, owns docKey;\n",
+      "generated/apply-units/data/docs/0001.tql": '# Generated executable apply unit from data/docs.tql\n\nput $r isa SchemaResource,\n  has docKey "doc-1";\n',
+      "manifests/fixture.package-manifest.json": `${JSON.stringify({ upstream: { sourceArtifacts: [] }, artifacts: [] }, null, 2)}\n`,
+    }
+  );
+
+  const packageJson = await prepareExecutablePackage(repoPath);
+  assert.deepEqual(packageJson.data, ["generated/apply-units/data/docs/0001.tql"]);
+  await assert.doesNotReject(fs.access(path.join(repoPath, "generated/apply-units/data/docs/0001.tql")));
+  await assert.rejects(fs.access(path.join(repoPath, "generated/apply-units/generated/apply-units/data/docs/0001.tql")));
+});
+
 test("validateExecutablePackage rejects oversized one-shot write units", async (t) => {
   const largeDocs = repeatedPutFile(180, 384);
   const repoPath = await createFixtureRepo(

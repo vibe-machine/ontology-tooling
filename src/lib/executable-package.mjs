@@ -486,6 +486,15 @@ export async function prepareExecutablePackage(repoPath, options = {}) {
       return normalizedPathCache.get(relativePath);
     }
 
+    if (isGeneratedApplyUnit(relativePath)) {
+      const absolutePath = path.join(repoPath, relativePath);
+      await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+      const text = sourceTextCache.get(relativePath) ?? await loadAssetText(repoPath, relativePath);
+      await fs.writeFile(absolutePath, text, "utf8");
+      normalizedPathCache.set(relativePath, [relativePath]);
+      return [relativePath];
+    }
+
     const text = sourceTextCache.get(relativePath) ?? await loadAssetText(repoPath, relativePath);
     const trimmed = text.trim();
     if (!trimmed) {
@@ -541,7 +550,7 @@ export async function prepareExecutablePackage(repoPath, options = {}) {
     for (const relativePath of packageJson.data) {
       nextData.push(...await normalizePath(relativePath));
     }
-    packageJson.data = nextData;
+    packageJson.data = unique(nextData);
   }
 
   const provenanceFiles = listProvenanceFiles(packageJson);
@@ -562,7 +571,7 @@ export async function prepareExecutablePackage(repoPath, options = {}) {
         nextLoadOrder.push(relativePath);
       }
     }
-    packageJson.assembly.loadOrder = nextLoadOrder;
+    packageJson.assembly.loadOrder = unique(nextLoadOrder);
   }
 
   if (packageJson.migration?.plans) {
