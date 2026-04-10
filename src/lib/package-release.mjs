@@ -320,11 +320,14 @@ function runPackageScript(repoPath, scriptName) {
 
 function releaseScriptsToRun(packageJson) {
   const scripts = packageJson.scripts ?? {};
+  const hasMigration = Boolean(packageJson.migration?.plans?.length);
   return [
     "refresh:package-contract",
     "validate:bootstrap",
     "test:typedb-bootstrap",
-    ...OPTIONAL_RELEASE_SCRIPTS.filter((name) => typeof scripts[name] === "string" && scripts[name].trim().length > 0),
+    ...OPTIONAL_RELEASE_SCRIPTS.filter((name) =>
+      hasMigration && typeof scripts[name] === "string" && scripts[name].trim().length > 0
+    ),
   ];
 }
 
@@ -371,6 +374,28 @@ function stripMigrationMetadata(packageJson) {
   const nextPackageJson = structuredClone(packageJson);
   delete nextPackageJson.migration;
   return nextPackageJson;
+}
+
+function rewriteCompatibleMigrationUnitPaths(packageJson, migrationPath, nextVersion) {
+  if (!packageJson?.migration?.plans || !migrationPath) return packageJson;
+
+  const nextPackageJson = structuredClone(packageJson);
+  let changed = false;
+
+  for (const plan of nextPackageJson.migration.plans) {
+    if (plan?.mode !== "compatible" || plan?.to !== nextVersion) continue;
+    for (const phase of plan.phases ?? []) {
+      for (const unit of phase.units ?? []) {
+        if (unit?.kind !== "write" || typeof unit.path !== "string") continue;
+        if (!/^migrations\/v.+-to-v.+\.tql$/.test(unit.path)) continue;
+        if (unit.path === migrationPath) continue;
+        unit.path = migrationPath;
+        changed = true;
+      }
+    }
+  }
+
+  return changed ? nextPackageJson : packageJson;
 }
 
 async function withValidationWorktree(repoPath, callback) {
@@ -469,6 +494,16 @@ export async function executeRelease(options) {
         const migrationPath = await generateMigrationDiff(repo, plan.currentVersion, plan.nextVersion);
         if (migrationPath) {
           await writeMigrationAssertions(repo, plan.nextPackageJson, plan.currentVersion, plan.nextVersion);
+          const packageJsonPath = path.join(repo, "package.json");
+          const currentPackageJson = await readJson(packageJsonPath);
+          const rewrittenPackageJson = rewriteCompatibleMigrationUnitPaths(
+            currentPackageJson,
+            migrationPath,
+            plan.nextVersion
+          );
+          if (rewrittenPackageJson !== currentPackageJson) {
+            await writeJson(packageJsonPath, rewrittenPackageJson);
+          }
           summary.migrationDiff = migrationPath;
           return;
         }

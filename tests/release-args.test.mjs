@@ -257,7 +257,7 @@ function repeatedPutFile(count, payloadSize = 256) {
 
 async function createFixtureRepo(
   t,
-  { withRemote = false, withMigration = false, withDataDiff = false, withLargeDataDiff = false } = {}
+  { withRemote = false, withMigration = false, withCustomCompatibleMigration = false, withDataDiff = false, withLargeDataDiff = false } = {}
 ) {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "ontology-release-"));
   t.after(async () => {
@@ -308,12 +308,28 @@ async function createFixtureRepo(
     },
   };
 
-  if (withMigration) {
+  if (withMigration || withCustomCompatibleMigration) {
     packageJson.migration = {
       format: 1,
       supportsUpgradeFrom: ["1.0.x"],
       plans: [
-        {
+        withCustomCompatibleMigration ? {
+          id: "fixture-package-compatible-to-1.0.0",
+          from: ">=0.9.0 <1.0.0",
+          to: "1.0.0",
+          mode: "compatible",
+          snapshot: { required: true, label: "pre-fixture-package-1.0.0-migration" },
+          phases: [
+            {
+              id: "schema",
+              units: [{ kind: "schema", path: "schema/fixture.tql" }],
+            },
+            {
+              id: "write",
+              units: [{ kind: "write", path: "migrations/v0.9.0-to-v1.0.0.tql" }],
+            },
+          ],
+        } : {
           id: "fixture-package-1.0.0-to-1.0.0",
           from: "1.0.0",
           to: "1.0.0",
@@ -377,6 +393,25 @@ ${(withDataDiff || withLargeDataDiff) ? `await fs.writeFile(
     : `'put $r2 isa SchemaResource,\\n  has docKey "fixture-docs@' + packageJson.version + '";\\n'`}
 );
 ` : ""}
+${withCustomCompatibleMigration ? `packageJson.migration = {
+  format: 1,
+  supportsUpgradeFrom: ["1.0.x"],
+  plans: [
+    {
+      id: "fixture-package-compatible-to-" + packageJson.version,
+      from: ">=0.9.0 <" + packageJson.version,
+      to: packageJson.version,
+      mode: "compatible",
+      snapshot: { required: true, label: "pre-fixture-package-" + packageJson.version + "-migration" },
+      phases: [
+        { id: "schema", units: [{ kind: "schema", path: "schema/fixture.tql" }] },
+        { id: "write", units: [{ kind: "write", path: "migrations/v0.9.0-to-v" + packageJson.version + ".tql" }] }
+      ]
+    }
+  ]
+};
+await fs.writeFile("package.json", JSON.stringify(packageJson, null, 2) + "\\n");
+` : ""}
 `
   );
   await fs.writeFile(
@@ -394,21 +429,28 @@ console.log("bootstrap ok");
     path.join(repoPath, "tools", "package_contract", "validate_typedb_bootstrap.mjs"),
     `console.log("typedb bootstrap ok");\n`
   );
-  if (withMigration) {
+  if (withMigration || withCustomCompatibleMigration) {
     await fs.mkdir(path.join(repoPath, "migrations", "preflight"), { recursive: true });
     await fs.mkdir(path.join(repoPath, "migrations", "verify"), { recursive: true });
-    await fs.writeFile(
-      path.join(repoPath, "migrations", "preflight", "assert-v1.0.0-module-version.tql"),
-      "match $x isa thing; limit 1;\n"
-    );
-    await fs.writeFile(
-      path.join(repoPath, "migrations", "v1.0.0-to-v1.0.0.tql"),
-      "match $x isa thing; insert $y isa thing;\n"
-    );
-    await fs.writeFile(
-      path.join(repoPath, "migrations", "verify", "assert-v1.0.0-module-version.tql"),
-      "match $x isa thing; limit 1;\n"
-    );
+    if (withMigration) {
+      await fs.writeFile(
+        path.join(repoPath, "migrations", "preflight", "assert-v1.0.0-module-version.tql"),
+        "match $x isa thing; limit 1;\n"
+      );
+      await fs.writeFile(
+        path.join(repoPath, "migrations", "v1.0.0-to-v1.0.0.tql"),
+        "match $x isa thing; insert $y isa thing;\n"
+      );
+      await fs.writeFile(
+        path.join(repoPath, "migrations", "verify", "assert-v1.0.0-module-version.tql"),
+        "match $x isa thing; limit 1;\n"
+      );
+    } else {
+      await fs.writeFile(
+        path.join(repoPath, "migrations", "v0.9.0-to-v1.0.0.tql"),
+        "match $x isa thing; insert $y isa thing;\n"
+      );
+    }
     await fs.writeFile(
       path.join(repoPath, "tools", "package_contract", "validate_typedb_migration.mjs"),
       `console.log("typedb migration ok");\n`
@@ -525,18 +567,18 @@ test("executeRelease pushes the release commit and tag when push is enabled", as
   assert.match(remoteHeads, /refs\/tags\/v1\.0\.1/);
 });
 
-test("executeRelease strips migration metadata when no migration diff is generated", async (t) => {
+test("executeRelease emits a migration diff for provenance-only version bumps", async (t) => {
   const { repoPath } = await createFixtureRepo(t, { withMigration: true });
   const summary = await executeRelease({ repo: repoPath, bump: "patch", version: null, dryRun: false, push: false });
 
   assert.equal(summary.nextVersion, "1.0.1");
-  assert.equal(summary.migrationDiff, undefined);
+  assert.equal(summary.migrationDiff, "migrations/v1.0.0-to-v1.0.1.tql");
 
   const packageJson = JSON.parse(await fs.readFile(path.join(repoPath, "package.json"), "utf8"));
-  assert.equal(packageJson.migration, undefined);
-  await assert.rejects(fs.access(path.join(repoPath, "migrations", "preflight", "assert-v1.0.0-module-version.tql")));
-  await assert.rejects(fs.access(path.join(repoPath, "migrations", "v1.0.0-to-v1.0.1.tql")));
-  await assert.rejects(fs.access(path.join(repoPath, "migrations", "verify", "assert-v1.0.1-module-version.tql")));
+  assert.equal(packageJson.migration.plans[0].phases[1].units[0].path, "migrations/v1.0.0-to-v1.0.1.tql");
+  await assert.doesNotReject(fs.access(path.join(repoPath, "migrations", "preflight", "assert-v1.0.0-module-version.tql")));
+  await assert.doesNotReject(fs.access(path.join(repoPath, "migrations", "v1.0.0-to-v1.0.1.tql")));
+  await assert.doesNotReject(fs.access(path.join(repoPath, "migrations", "verify", "assert-v1.0.1-module-version.tql")));
 });
 
 test("executeRelease updates migration metadata and emits migration assertion files", async (t) => {
@@ -566,6 +608,21 @@ test("executeRelease updates migration metadata and emits migration assertion fi
   await assert.doesNotReject(fs.access(path.join(repoPath, "migrations", "preflight", "assert-v1.0.0-module-version.tql")));
   await assert.doesNotReject(fs.access(path.join(repoPath, "migrations", "v1.0.0-to-v1.0.1.tql")));
   await assert.doesNotReject(fs.access(path.join(repoPath, "migrations", "verify", "assert-v1.0.1-module-version.tql")));
+});
+
+test("executeRelease rewrites custom compatible migration plans to the generated diff path", async (t) => {
+  const { repoPath } = await createFixtureRepo(t, { withCustomCompatibleMigration: true, withDataDiff: true });
+  const summary = await executeRelease({ repo: repoPath, bump: "patch", version: null, dryRun: false, push: false });
+
+  assert.equal(summary.nextVersion, "1.0.1");
+  assert.equal(summary.migrationDiff, "migrations/v1.0.0-to-v1.0.1.tql");
+
+  const packageJson = JSON.parse(await fs.readFile(path.join(repoPath, "package.json"), "utf8"));
+  assert.equal(
+    packageJson.migration.plans[0].phases[1].units[0].path,
+    "migrations/v1.0.0-to-v1.0.1.tql"
+  );
+  await assert.doesNotReject(fs.access(path.join(repoPath, "migrations", "v1.0.0-to-v1.0.1.tql")));
 });
 
 test("executeRelease rewrites oversized write assets into executable apply units before validation", async (t) => {

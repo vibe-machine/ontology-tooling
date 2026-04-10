@@ -197,24 +197,12 @@ function getFileAtTag(repoPath, tag, relativePath) {
   }
 }
 
-function provenanceAssetPathsFromPackageJson(packageJson) {
+function nonMigratableAssetPathsFromPackageJson(packageJson) {
   const { provenance } = packageJson;
   const assetPaths = new Set();
 
-  if (Array.isArray(provenance)) {
-    for (const file of provenance) assetPaths.add(file);
-  } else if (typeof provenance === "object" && provenance) {
-    const files = Array.isArray(provenance.files) ? [...provenance.files] : [];
-    if (typeof provenance.manifest === "string") {
-      files.push(provenance.manifest);
-    }
-    for (const file of files) assetPaths.add(file);
-  }
-
-  for (const generatedArtifactPath of packageJson.assembly?.generatedArtifacts ?? []) {
-    if (/(^|\/)[^/]*provenance\.tql$/.test(generatedArtifactPath)) {
-      assetPaths.add(generatedArtifactPath);
-    }
+  if (typeof provenance === "object" && provenance && typeof provenance.manifest === "string") {
+    assetPaths.add(provenance.manifest);
   }
 
   return assetPaths;
@@ -232,8 +220,8 @@ function provenanceAssetPathsFromPackageJson(packageJson) {
 export async function generateMigrationDiff(repoPath, fromVersion, toVersion) {
   const packageJsonPath = path.join(repoPath, "package.json");
   const packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf8"));
-  const provenanceAssetPaths = provenanceAssetPathsFromPackageJson(packageJson);
-  const dataFiles = (packageJson.data ?? []).filter((dataFile) => !provenanceAssetPaths.has(dataFile));
+  const nonMigratableAssetPaths = nonMigratableAssetPathsFromPackageJson(packageJson);
+  const dataFiles = (packageJson.data ?? []).filter((dataFile) => !nonMigratableAssetPaths.has(dataFile));
 
   if (dataFiles.length === 0) return null;
 
@@ -322,8 +310,8 @@ export const testing = {
   diffEntityGroup,
   extractGroupKey,
   groupPutStatements,
+  nonMigratableAssetPathsFromPackageJson,
   parseHasClauses,
-  provenanceAssetPathsFromPackageJson,
   resolvePreambles,
   splitPutStatements,
 };

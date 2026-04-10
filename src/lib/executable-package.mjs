@@ -1,9 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import crypto from "node:crypto";
 
 export const APPLY_UNITS_ROOT = "generated/apply-units";
 export const MAX_WRITE_UNIT_CHARS = 50_000;
-export const MAX_WRITE_UNIT_BLOCKS = 25;
+export const MAX_WRITE_UNIT_BLOCKS = 50;
 
 function isNonEmptyString(value) {
   return typeof value === "string" && value.trim().length > 0;
@@ -77,36 +78,45 @@ function referencedVariables(text) {
   return [...text.matchAll(/\$(\w+)/g)].map((match) => match[1]);
 }
 
+function declaredVariablesForBlock(block) {
+  return [...block.matchAll(/\$([A-Za-z][A-Za-z0-9_]*)\s+isa\b/g)].map((match) => match[1]);
+}
+
+function referencedVariablesForBlock(block) {
+  return [...block.matchAll(/\$([A-Za-z][A-Za-z0-9_]*)/g)].map((match) => match[1]);
+}
+
 function resolvePreambles(targetGroups, allGroups) {
   const targetSet = new Set(targetGroups);
-  const resolved = [];
   const resolvedVariables = new Set(targetGroups.filter((group) => group.variable).map((group) => group.variable));
-  const requiredVariables = new Set();
+  const groupByVariable = new Map(
+    allGroups
+      .filter((group) => group.variable && !targetSet.has(group))
+      .map((group) => [group.variable, group])
+  );
+  const resolved = [];
+  const visiting = new Set();
+
+  const includeVariable = (variable) => {
+    if (resolvedVariables.has(variable) || visiting.has(variable)) return;
+    const group = groupByVariable.get(variable);
+    if (!group) return;
+
+    visiting.add(variable);
+    for (const dependency of referencedVariables(group.statements.join("\n"))) {
+      includeVariable(dependency);
+    }
+    visiting.delete(variable);
+
+    if (!resolved.includes(group)) {
+      resolved.push(group);
+      resolvedVariables.add(variable);
+    }
+  };
 
   for (const group of targetGroups) {
     for (const variable of referencedVariables(group.statements.join("\n"))) {
-      if (!resolvedVariables.has(variable)) {
-        requiredVariables.add(variable);
-      }
-    }
-  }
-
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const group of allGroups) {
-      if (!group.variable || targetSet.has(group) || resolved.includes(group)) continue;
-      if (!requiredVariables.has(group.variable)) continue;
-
-      resolved.push(group);
-      resolvedVariables.add(group.variable);
-      changed = true;
-
-      for (const variable of referencedVariables(group.statements.join("\n"))) {
-        if (!resolvedVariables.has(variable)) {
-          requiredVariables.add(variable);
-        }
-      }
+      includeVariable(variable);
     }
   }
 
@@ -140,6 +150,41 @@ function splitParagraphQueries(text) {
   }
 
   return blocks.filter(Boolean);
+}
+
+function atomicWriteBlocks(trimmed) {
+  const blocks = trimmed
+    .split(/\n\s*\n+/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  if (blocks.length > 1) {
+    return blocks;
+  }
+
+  const statements = trimmed.match(/[\s\S]*?;/g) ?? [];
+  if (statements.length === 0) {
+    return [trimmed];
+  }
+
+  const statementBlocks = [];
+  for (let index = 0; index < statements.length; index += 1) {
+    const current = statements[index].trim();
+    const referenced = referencedVariablesForBlock(current);
+    const blockStatements = [current];
+    const next = statements[index + 1]?.trim();
+    if (
+      next
+      && (next.startsWith("put (") || next.startsWith("match"))
+      && referenced.some((name) => next.includes(`$${name}`))
+    ) {
+      blockStatements.push(next);
+      index += 1;
+    }
+    statementBlocks.push(blockStatements.join("\n"));
+  }
+
+  return statementBlocks;
 }
 
 export function splitExecutableBlocks(text) {
@@ -203,6 +248,13 @@ function renderShard(sourcePath, blocks) {
   return `# Generated executable apply unit from ${sourcePath}\n\n${blocks.join("\n\n")}\n`;
 }
 
+function renderShardWithHeaders(sourcePath, blocks, { manifestPath = null, upstreamCommit = null } = {}) {
+  const headers = [`# Generated executable apply unit from ${sourcePath}`];
+  if (isNonEmptyString(manifestPath)) headers.push(`# manifest: ${manifestPath}`);
+  if (isNonEmptyString(upstreamCommit)) headers.push(`# upstream-commit: ${upstreamCommit}`);
+  return `${headers.join("\n")}\n\n${blocks.join("\n\n")}\n`;
+}
+
 function buildPutChunks(text, { maxChars = MAX_WRITE_UNIT_CHARS, maxBlocks = MAX_WRITE_UNIT_BLOCKS } = {}) {
   const groups = groupPutStatements(splitPutStatements(text));
   if (groups.length === 0) return [];
@@ -220,7 +272,7 @@ function buildPutChunks(text, { maxChars = MAX_WRITE_UNIT_CHARS, maxBlocks = MAX
     const renderedBlocks = renderCandidate(candidateGroups);
     const renderedText = renderShard("generated", renderedBlocks);
 
-    if (currentGroups.length > 0 && (candidateGroups.length > maxBlocks || renderedText.length > maxChars)) {
+    if (currentGroups.length > 0 && (renderedBlocks.length > maxBlocks || renderedText.length > maxChars)) {
       chunks.push(renderCandidate(currentGroups));
       currentGroups = [group];
       continue;
@@ -234,6 +286,89 @@ function buildPutChunks(text, { maxChars = MAX_WRITE_UNIT_CHARS, maxBlocks = MAX
   }
 
   for (const chunk of chunks) {
+    if (chunk.length > maxBlocks) {
+      throw new Error(`write chunk exceeds safe block limit (${chunk.length} blocks > ${maxBlocks}) and must be split at the source`);
+    }
+    if (renderShard("generated", chunk).length > maxChars) {
+      throw new Error(`write chunk exceeds safe size limit (${maxChars} chars) and must be split at the source`);
+    }
+  }
+
+  return chunks;
+}
+
+function buildContextualChunks(text, { maxChars = MAX_WRITE_UNIT_CHARS, maxBlocks = MAX_WRITE_UNIT_BLOCKS } = {}) {
+  const blocks = atomicWriteBlocks(text.trim());
+  if (blocks.length === 0) return [];
+
+  const declarationIndexByVariable = new Map();
+  blocks.forEach((block, index) => {
+    for (const variable of declaredVariablesForBlock(block)) {
+      if (!declarationIndexByVariable.has(variable)) {
+        declarationIndexByVariable.set(variable, index);
+      }
+    }
+  });
+
+  const contextualBlocks = (selectedIndexes) => {
+    const contextIndexes = new Set();
+    const pending = [];
+
+    for (const index of selectedIndexes) {
+      for (const variable of referencedVariablesForBlock(blocks[index])) {
+        const declarationIndex = declarationIndexByVariable.get(variable);
+        if (declarationIndex !== undefined && !selectedIndexes.has(declarationIndex)) {
+          pending.push(declarationIndex);
+        }
+      }
+    }
+
+    while (pending.length > 0) {
+      const declarationIndex = pending.pop();
+      if (declarationIndex === undefined || selectedIndexes.has(declarationIndex) || contextIndexes.has(declarationIndex)) {
+        continue;
+      }
+      contextIndexes.add(declarationIndex);
+      for (const variable of referencedVariablesForBlock(blocks[declarationIndex])) {
+        const dependencyIndex = declarationIndexByVariable.get(variable);
+        if (
+          dependencyIndex !== undefined
+          && !selectedIndexes.has(dependencyIndex)
+          && !contextIndexes.has(dependencyIndex)
+        ) {
+          pending.push(dependencyIndex);
+        }
+      }
+    }
+
+    return [...contextIndexes, ...selectedIndexes].sort((lhs, rhs) => lhs - rhs).map((index) => blocks[index]);
+  };
+
+  const chunks = [];
+  let currentIndexes = new Set();
+  for (let index = 0; index < blocks.length; index += 1) {
+    const candidateIndexes = new Set(currentIndexes);
+    candidateIndexes.add(index);
+    const candidateBlocks = contextualBlocks(candidateIndexes);
+    const candidateText = renderShard("generated", candidateBlocks);
+
+    if (currentIndexes.size > 0 && (candidateBlocks.length > maxBlocks || candidateText.length > maxChars)) {
+      chunks.push(contextualBlocks(currentIndexes));
+      currentIndexes = new Set([index]);
+      continue;
+    }
+
+    currentIndexes = candidateIndexes;
+  }
+
+  if (currentIndexes.size > 0) {
+    chunks.push(contextualBlocks(currentIndexes));
+  }
+
+  for (const chunk of chunks) {
+    if (chunk.length > maxBlocks) {
+      throw new Error(`write chunk exceeds safe block limit (${chunk.length} blocks > ${maxBlocks}) and must be split at the source`);
+    }
     if (renderShard("generated", chunk).length > maxChars) {
       throw new Error(`write chunk exceeds safe size limit (${maxChars} chars) and must be split at the source`);
     }
@@ -248,6 +383,14 @@ async function readJson(filePath) {
 
 async function writeJson(filePath, value) {
   await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+async function hashFile(repoPath, relativePath) {
+  return sha256(await fs.readFile(path.join(repoPath, relativePath)));
+}
+
+function sha256(text) {
+  return crypto.createHash("sha256").update(text).digest("hex");
 }
 
 function listProvenanceFiles(packageJson) {
@@ -290,12 +433,24 @@ async function loadAssetText(repoPath, relativePath) {
   return fs.readFile(path.join(repoPath, relativePath), "utf8");
 }
 
+function activeManifestPath(packageJson) {
+  if (isNonEmptyString(packageJson.provenance?.manifest)) {
+    return packageJson.provenance.manifest;
+  }
+  const packageManifest = (packageJson.manifests ?? []).find((relativePath) => relativePath.endsWith(".package-manifest.json"));
+  if (packageManifest) return packageManifest;
+  return (packageJson.manifests ?? [])[0] ?? null;
+}
+
 export async function prepareExecutablePackage(repoPath, options = {}) {
   const packageJsonPath = path.join(repoPath, "package.json");
   const packageJson = await readJson(packageJsonPath);
   const generatedPaths = [];
+  const generatedArtifactsForManifest = [];
   const normalizedPathCache = new Map();
   const sourceTextCache = new Map();
+  const manifestPath = activeManifestPath(packageJson);
+  const upstreamCommit = packageJson.upstream?.commit ?? packageJson.source?.commit ?? null;
 
   const trackedPaths = new Set();
   for (const assetPath of packageJson.assembly?.loadOrder ?? []) {
@@ -352,11 +507,11 @@ export async function prepareExecutablePackage(repoPath, options = {}) {
         || line.startsWith("delete ")
         || line.startsWith("update ")
       );
-    const chunks = hasPutOnly ? buildPutChunks(trimmed, options) : chunkBlocks(blocks, options);
+    const chunks = hasPutOnly ? buildPutChunks(trimmed, options) : buildContextualChunks(trimmed, options);
 
     if (chunks.length === 1
         && chunks[0].length <= MAX_WRITE_UNIT_BLOCKS
-        && renderShard(relativePath, chunks[0]).length <= MAX_WRITE_UNIT_CHARS) {
+        && renderShardWithHeaders(relativePath, chunks[0], { manifestPath, upstreamCommit }).length <= MAX_WRITE_UNIT_CHARS) {
       normalizedPathCache.set(relativePath, [relativePath]);
       return [relativePath];
     }
@@ -366,9 +521,15 @@ export async function prepareExecutablePackage(repoPath, options = {}) {
       const shardPath = buildShardPath(relativePath, index);
       const absolutePath = path.join(repoPath, shardPath);
       await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-      await fs.writeFile(absolutePath, renderShard(relativePath, chunk), "utf8");
+      const shardText = renderShardWithHeaders(relativePath, chunk, { manifestPath, upstreamCommit });
+      await fs.writeFile(absolutePath, shardText, "utf8");
       emittedPaths.push(toPosix(shardPath));
       generatedPaths.push(toPosix(shardPath));
+      generatedArtifactsForManifest.push({
+        kind: "apply-unit",
+        path: toPosix(shardPath),
+        sha256: sha256(shardText),
+      });
     }
 
     normalizedPathCache.set(relativePath, emittedPaths);
@@ -427,6 +588,32 @@ export async function prepareExecutablePackage(repoPath, options = {}) {
       (relativePath) => !isGeneratedApplyUnit(relativePath)
     );
     packageJson.assembly.generatedArtifacts = unique([...existingGenerated, ...generatedPaths]);
+  }
+
+  if (manifestPath) {
+    const manifestAbsPath = path.join(repoPath, manifestPath);
+    try {
+      await writeJson(packageJsonPath, packageJson);
+      const manifest = await readJson(manifestAbsPath);
+      const existingArtifacts = Array.isArray(manifest.artifacts) ? manifest.artifacts : [];
+      manifest.artifacts = [
+        ...existingArtifacts.filter((artifact) => !isGeneratedApplyUnit(artifact?.path)),
+        ...generatedArtifactsForManifest,
+      ];
+      if (Array.isArray(manifest.upstream?.sourceArtifacts)) {
+        manifest.upstream.sourceArtifacts = await Promise.all(
+          manifest.upstream.sourceArtifacts.map(async (artifact) => ({
+            ...artifact,
+            sha256: await hashFile(repoPath, artifact.path),
+          }))
+        );
+      }
+      await writeJson(manifestAbsPath, manifest);
+      return packageJson;
+    } catch {
+      // If the manifest isn't available yet, leave it alone. Release validation
+      // will fail downstream if the package contract requires it.
+    }
   }
 
   await writeJson(packageJsonPath, packageJson);
@@ -498,11 +685,16 @@ export async function validateExecutablePackage(repoPath) {
 export const testing = {
   buildShardPath,
   buildPutChunks,
+  buildContextualChunks,
   chunkBlocks,
   groupPutStatements,
   isGeneratedApplyUnit,
+  atomicWriteBlocks,
+  declaredVariablesForBlock,
+  referencedVariablesForBlock,
   resolvePreambles,
   renderShard,
+  renderShardWithHeaders,
   splitExecutableBlocks,
   splitParagraphQueries,
   splitPutStatements,

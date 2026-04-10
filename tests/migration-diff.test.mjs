@@ -14,25 +14,25 @@ const {
   resolvePreambles,
   parseHasClauses,
   diffEntityGroup,
-  provenanceAssetPathsFromPackageJson,
+  nonMigratableAssetPathsFromPackageJson,
 } = testing;
 
-test("provenanceAssetPathsFromPackageJson supports array and object manifest forms", () => {
+test("nonMigratableAssetPathsFromPackageJson excludes manifest but keeps provenance data migratable", () => {
   assert.deepEqual(
-    [...provenanceAssetPathsFromPackageJson({ provenance: ["data/build.tql"] })],
-    ["data/build.tql"]
+    [...nonMigratableAssetPathsFromPackageJson({ provenance: ["data/build.tql"] })],
+    []
   );
   assert.deepEqual(
-    [...provenanceAssetPathsFromPackageJson({
+    [...nonMigratableAssetPathsFromPackageJson({
       provenance: { files: ["data/build.tql"], manifest: "manifests/build.package-manifest.json" },
     })].sort(),
-    ["data/build.tql", "manifests/build.package-manifest.json"].sort()
+    ["manifests/build.package-manifest.json"]
   );
   assert.deepEqual(
-    [...provenanceAssetPathsFromPackageJson({
+    [...nonMigratableAssetPathsFromPackageJson({
       assembly: { generatedArtifacts: ["data/example-provenance.tql", "data/example-schema-docs.tql"] },
     })],
-    ["data/example-provenance.tql"]
+    []
   );
 });
 
@@ -248,7 +248,7 @@ put (resource: $r3, module: $module) isa inModule;
   assert.equal(newPuts[0].variable, "r3");
 });
 
-test("generateMigrationDiff excludes target provenance assets from the migration file", async (t) => {
+test("generateMigrationDiff includes target provenance updates in the migration file", async (t) => {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "ontology-migration-diff-"));
   t.after(async () => {
     await fs.rm(tempRoot, { recursive: true, force: true });
@@ -289,6 +289,6 @@ test("generateMigrationDiff excludes target provenance assets from the migration
 
   const migrationText = await fs.readFile(path.join(repoPath, migrationRelPath), "utf8");
   assert.match(migrationText, /seed-2/);
-  assert.doesNotMatch(migrationText, /OntologyModuleVersion/);
-  assert.doesNotMatch(migrationText, /fixture-package@1\.0\.1/);
+  assert.match(migrationText, /OntologyModuleVersion/);
+  assert.match(migrationText, /fixture-package@1\.0\.1/);
 });
