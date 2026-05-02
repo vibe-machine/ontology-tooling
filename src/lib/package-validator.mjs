@@ -195,6 +195,38 @@ function validatePreviousReleaseCoverage(repoPath, packageJson) {
   }
 }
 
+function schemaDocsStem(relativePath) {
+  const match = /^data\/(.+)-schema-docs\.tql$/.exec(relativePath);
+  return match?.[1] ?? null;
+}
+
+function schemaDocsApplyUnitStem(relativePath) {
+  const match = /^generated\/apply-units\/data\/(.+)-schema-docs\/\d+\.tql$/.exec(relativePath);
+  return match?.[1] ?? null;
+}
+
+function validateSchemaDocsApplyUnits(packageJson) {
+  const dataPaths = Array.isArray(packageJson.data) ? packageJson.data : [];
+  const loadOrderPaths = Array.isArray(packageJson.assembly?.loadOrder) ? packageJson.assembly.loadOrder : [];
+  const executablePaths = [...dataPaths, ...loadOrderPaths];
+  const applyUnitStems = new Set(
+    executablePaths
+      .map(schemaDocsApplyUnitStem)
+      .filter(Boolean)
+  );
+
+  if (applyUnitStems.size === 0) return;
+
+  for (const relativePath of executablePaths) {
+    const stem = schemaDocsStem(relativePath);
+    if (stem && applyUnitStems.has(stem)) {
+      throw new Error(
+        `schema docs '${relativePath}' must not be listed as executable data when split apply units exist`
+      );
+    }
+  }
+}
+
 export async function validatePackageContract(repoPath) {
   const packageJsonPath = path.join(repoPath, "package.json");
   const packageJson = await readJson(packageJsonPath);
@@ -222,6 +254,7 @@ export async function validatePackageContract(repoPath) {
     await assertPathExists(repoPath, packageJson.categorization, "categorization file");
   }
 
+  validateSchemaDocsApplyUnits(packageJson);
   await validateAssembly(repoPath, packageJson);
   await validateMigrationContract(repoPath);
   validatePreviousReleaseCoverage(repoPath, packageJson);

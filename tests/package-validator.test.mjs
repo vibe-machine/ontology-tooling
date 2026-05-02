@@ -86,6 +86,67 @@ test("validatePackageContract rejects undeclared assembly assets", async (t) => 
   );
 });
 
+test("validatePackageContract rejects monolithic schema docs in executable load path when apply units exist", async (t) => {
+  const repoPath = await createFixtureRepo(
+    t,
+    basePackageJson({
+      data: [
+        "data/seed.tql",
+        "generated/apply-units/data/custom-schema-docs/0001.tql",
+        "data/custom-schema-docs.tql",
+      ],
+      assembly: {
+        loadOrder: [
+          "schema/custom.tql",
+          "data/seed.tql",
+          "generated/apply-units/data/custom-schema-docs/0001.tql",
+          "data/custom-schema-docs.tql",
+          "manifests/resources.json",
+        ],
+        generatedArtifacts: ["data/custom-schema-docs.tql"],
+      },
+    }),
+    {
+      ...baseFiles,
+      "generated/apply-units/data/custom-schema-docs/0001.tql": "insert $doc isa thing;",
+      "data/custom-schema-docs.tql": "insert $doc isa thing;",
+    }
+  );
+
+  await assert.rejects(
+    validatePackageContract(repoPath),
+    /schema docs 'data\/custom-schema-docs\.tql' must not be listed as executable data when split apply units exist/
+  );
+});
+
+test("validatePackageContract allows monolithic schema docs as generated artifact when apply units are executable", async (t) => {
+  const repoPath = await createFixtureRepo(
+    t,
+    basePackageJson({
+      data: [
+        "data/seed.tql",
+        "generated/apply-units/data/custom-schema-docs/0001.tql",
+      ],
+      assembly: {
+        loadOrder: [
+          "schema/custom.tql",
+          "data/seed.tql",
+          "generated/apply-units/data/custom-schema-docs/0001.tql",
+          "manifests/resources.json",
+        ],
+        generatedArtifacts: ["data/custom-schema-docs.tql"],
+      },
+    }),
+    {
+      ...baseFiles,
+      "generated/apply-units/data/custom-schema-docs/0001.tql": "insert $doc isa thing;",
+      "data/custom-schema-docs.tql": "insert $doc isa thing;",
+    }
+  );
+
+  await assert.doesNotReject(validatePackageContract(repoPath));
+});
+
 test("validatePackageContract requires live migration testing when migrations are declared", async (t) => {
   const repoPath = await createFixtureRepo(
     t,

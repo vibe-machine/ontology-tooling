@@ -2,4 +2,5 @@
 node = "22"
 
 [env]
+TYPEDB_BIN = "/opt/homebrew/bin/typedb"
 _.path = ["./bin"]

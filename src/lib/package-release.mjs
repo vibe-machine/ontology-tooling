@@ -153,11 +153,6 @@ async function writeMigrationAssertions(repoPath, packageJson, currentVersion, n
   $version isa OntologyModuleVersion,
     has moduleVersion "${currentVersion}";
   (version: $version, module: $module) isa ontologyModuleVersionOf;
-  not {
-    $next isa OntologyModuleVersion,
-      has moduleVersion "${nextVersion}";
-    (version: $next, module: $module) isa ontologyModuleVersionOf;
-  };
 limit 1;
 `;
 

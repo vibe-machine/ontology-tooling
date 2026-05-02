@@ -2,4 +2,7 @@
 .idea/
 node_modules/
 .mise.local.toml
+mise.local.toml
+mise.*.local.toml
+.mise.*.local.toml
 tests/__pycache__/
