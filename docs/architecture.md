@@ -1,20 +1,40 @@
 # Architecture
 
-`ontology-tooling` is the shared automation home for ontology package operations.
+`ontology-tooling` is the shared automation home for ontology package
+operations and the durable home of the Vibe Machine `ont` CLI/TUI.
+
+## Two Surfaces
+
+The repo intentionally ships two distinct surfaces:
+
+1. **Node release tooling** (`bin/ontology-release`, `src/cli/*.mjs`,
+   `src/lib/*.mjs`) — owns npm package release orchestration for ontology
+   repos. See `docs/repo-wrapper-pattern.md` and `docs/local-release-playbook.md`.
+2. **Rust workspace** (`Cargo.toml`, `crates/vibe-ontology/`, `crates/ont/`) —
+   owns the `vibe-ontology` library that other Vibe Machine products embed,
+   plus the unified `ont` CLI/TUI binary. See `docs/rust-workspace.md` and
+   `docs/corpus-runner.md`.
+
+The two surfaces are independent. The Node tooling does not depend on the
+Rust workspace and vice versa.
 
 ## Responsibility Boundary
 
 This repo should own:
 
-- release/version/tag automation
-- shared package-contract orchestration
-- reusable validation orchestration
+- release/version/tag automation (Node)
+- shared package-contract orchestration (Node)
+- reusable validation orchestration (Node)
+- the `vibe-ontology` library (Rust) — corpus model, discovery, validation,
+  prompt-export
+- the `ont` CLI/TUI binary (Rust) — operator surface for the above
 
 This repo should not own:
 
 - ontology-specific schema semantics
 - ontology-specific translation logic
 - package-local documentation content
+- corpus content (lives in the ontology repos themselves)
 
 ## Execution Model
 

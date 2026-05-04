@@ -7,6 +7,10 @@ mise.*.local.toml
 .mise.*.local.toml
 tests/__pycache__/
 
+# Rust workspace
+target/
+**/*.rs.bk
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db

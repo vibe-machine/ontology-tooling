@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Build the Rust workspace (vibe-ontology + ont)"
+set -euo pipefail
+
+cargo build --workspace

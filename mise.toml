@@ -1,6 +1,7 @@
 [tools]
 node = "22"
+rust = "1.83"
 
 [env]
 TYPEDB_BIN = "/opt/homebrew/bin/typedb"
-_.path = ["./bin"]
+_.path = ["./bin", "./target/debug", "./target/release"]

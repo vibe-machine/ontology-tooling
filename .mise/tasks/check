@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-#MISE description="Smoke-check the ontology-release CLI by executing its --help path"
+#MISE description="Smoke-check the ontology CLIs (Node release tooling + Rust ont) by executing their --help paths"
 set -euo pipefail
 
 node src/cli/ontology-release.mjs --help >/dev/null
+node src/cli/ontology-validate-package.mjs --help >/dev/null
+cargo run --quiet -p ont -- --help >/dev/null
 echo "check ok"

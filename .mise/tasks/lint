@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Run cargo clippy on the workspace with -D warnings"
+set -euo pipefail
+
+cargo clippy --workspace --all-targets -- -D warnings

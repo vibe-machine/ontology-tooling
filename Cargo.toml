@@ -1,0 +1,55 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/vibe-ontology",
+    "crates/ont",
+]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.83"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/vibe-machine/ontology-tooling"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.dependencies]
+# Domain
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+anyhow = "1"
+
+# CLI
+clap = { version = "4.5", features = ["derive", "env", "wrap_help"] }
+clap_complete = "4.5"
+
+# TUI
+ratatui = { version = "0.29", default-features = false, features = ["crossterm"] }
+crossterm = { version = "0.28", features = ["event-stream"] }
+
+# Async
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal", "io-std"] }
+tokio-util = { version = "0.7" }
+futures = "0.3"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# Output
+anstream = "0.6"
+
+# Internal
+vibe-ontology = { path = "crates/vibe-ontology", version = "0.1.0" }
+
+# Tests
+assert_cmd = "2"
+predicates = "3"
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

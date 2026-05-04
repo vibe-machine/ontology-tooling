@@ -4,16 +4,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Purpose
 
-ontology-tooling is the shared release/version/tag orchestration hub for the `collection-vibe-machine` project. It provides the `ontology-release` command that automates releases for multiple ontology repositories. Releases are local-first (developer workstation or agent), not CI/CD-driven.
+ontology-tooling is the shared tooling hub for the `collection-vibe-machine` project. It contains:
+
+1. **Node release tooling** — the `ontology-release` CLI that automates releases for multiple ontology repositories (local-first, not CI/CD).
+2. **Rust workspace** — the `vibe-ontology` library and the `ont` CLI/TUI binary, the durable runtime that other Vibe Machine products (OneApp, Lingo) embed.
 
 ## Commands
 
 ```bash
-mise run check                                          # Smoke check (runs --help)
-mise run test                                           # Run test suite (node --test)
-mise run release-check -- ../ontology-repo              # Validate repo without mutation
-mise run release-dry-run -- ../ontology-repo [bump]     # Preview next release
+# Node release tooling
+mise run check                                            # Smoke check (Node CLIs + ont --help)
+mise run test                                             # Run Node test suite (node --test)
+mise run release-check -- ../ontology-repo                # Validate repo without mutation
+mise run release-dry-run -- ../ontology-repo [bump]       # Preview next release
 mise run release -- --repo ../ontology-repo --bump patch  # Execute release
+
+# Rust workspace
+mise run build                                            # cargo build --workspace
+mise run cargo-test                                       # cargo test --workspace
+mise run lint                                             # cargo clippy --workspace -D warnings
+ont --help                                                # Top-level CLI help (after build)
+ont corpus list --repo ../ontology-gist                   # List corpus items
+ont corpus validate --repo ../ontology-gist               # Shape-validate a corpus
+ont tui                                                   # Launch interactive TUI
 ```
 
 npm equivalents: `npm run check`, `npm run test`.
@@ -21,21 +34,34 @@ npm equivalents: `npm run check`, `npm run test`.
 ## Architecture
 
 ```
+# Node release tooling
 bin/ontology-release              → Executable entry point
 src/cli/ontology-release.mjs      → CLI implementation (arg parsing, dispatch)
 src/lib/release-args.mjs          → Argument parsing & validation
 src/lib/versions.mjs              → Semver parsing, bumping, version resolution
 src/lib/package-release.mjs       → Release planning & execution (git ops, manifest rewrites)
 tests/release-args.test.mjs       → Tests (node:test + assert/strict)
-.mise/tasks/                      → Operator entrypoints (check, test, release, etc.)
+
+# Rust workspace
+Cargo.toml                        → Workspace root
+crates/vibe-ontology/             → Library (durable, embeddable, no CLI/TUI deps)
+crates/ont/                       → Binary (clap + ratatui, depends on vibe-ontology)
+
+# Shared
+.mise/tasks/                      → Operator entrypoints (check, test, build, lint, release, …)
 docs/                             → Architecture docs, playbooks, contracts
 ```
 
+See `docs/rust-workspace.md` for the Rust crate layout and `docs/corpus-runner.md` for the `ont corpus` command surface.
+
 ### Responsibility Boundaries
 
-This repo **owns**: release automation, version planning, manifest path rewrites, release commit/tag creation, push orchestration.
+This repo **owns**:
+- npm package release automation (Node)
+- the `vibe-ontology` library that other Vibe Machine products consume (Rust)
+- the `ont` CLI/TUI binary
 
-This repo **does not own**: ontology-specific schema semantics, package-local generation, translation logic, or documentation content.
+This repo **does not own**: ontology-specific schema semantics, package-local generation, translation logic, or corpus content (which lives in the ontology repos themselves).
 
 ### Release Contract
 
@@ -61,10 +87,18 @@ Target ontology repos must expose three npm scripts:
 
 ## Tech Stack & Conventions
 
+**Node release tooling:**
 - **Node 22** (pinned via mise.toml), ES modules, zero npm dependencies (stdlib only)
 - **Testing:** Node's native `node:test` with `assert/strict`; fixtures use temporary git repos
 - **Style:** Functional decomposition, async/await, no external linters configured
 - **Tags:** `v<semver>` format; commit messages: `Release <name> v<version>`
+
+**Rust workspace:**
+- **Rust 1.83** (pinned via mise.toml), edition 2021, `unsafe_code = "forbid"` workspace-wide
+- **Library:** `vibe-ontology` (zero CLI/TUI deps; embeddable in OneApp/Lingo)
+- **Binary:** `ont` depends on `vibe-ontology` + clap + ratatui + tokio
+- **Testing:** `cargo test --workspace`; integration tests use `assert_cmd` + `tempfile`
+- **Lints:** `cargo clippy --workspace --all-targets -- -D warnings` must pass
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
 ## Beads Issue Tracker
