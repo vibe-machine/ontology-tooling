@@ -6,3 +6,8 @@ mise.local.toml
 mise.*.local.toml
 .mise.*.local.toml
 tests/__pycache__/
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
