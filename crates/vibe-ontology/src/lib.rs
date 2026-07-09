@@ -16,6 +16,7 @@
 pub mod apply;
 pub mod corpus;
 pub mod error;
+pub mod executable_package;
 pub mod migration_contract;
 pub mod package_validator;
 pub mod version;
