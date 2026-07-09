@@ -27,6 +27,9 @@ pub enum Error {
 
     #[error("typedb error: {0}")]
     TypeDb(String),
+
+    #[error("version error: {0}")]
+    Version(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

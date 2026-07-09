@@ -16,5 +16,6 @@
 pub mod apply;
 pub mod corpus;
 pub mod error;
+pub mod version;
 
 pub use error::{Error, Result};
