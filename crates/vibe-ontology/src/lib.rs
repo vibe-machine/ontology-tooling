@@ -14,12 +14,14 @@
 //! or ratatui into their build.
 
 pub mod apply;
+pub mod bootstrap_uniqueness;
 pub mod corpus;
 pub mod error;
 pub mod executable_package;
 pub mod migration_contract;
 pub mod migration_diff;
 pub mod package_validator;
+pub mod release_args;
 pub mod version;
 
 pub use error::{Error, Result};
