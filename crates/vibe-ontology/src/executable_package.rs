@@ -96,11 +96,24 @@ fn has_put_only(text: &str) -> bool {
         })
 }
 
-fn split_put_statements(text: &str) -> Vec<String> {
+pub(crate) fn split_put_statements(text: &str) -> Vec<String> {
+    split_put_statement_lines(
+        text.split('\n')
+            .map(|line| line.strip_suffix('\r').unwrap_or(line)),
+    )
+}
+
+/// The migration-diff JS source splits only on LF, unlike executable-package's
+/// CRLF-aware splitter. Keep the shared algorithm while preserving that detail.
+pub(crate) fn split_put_statements_on_lf(text: &str) -> Vec<String> {
+    split_put_statement_lines(text.split('\n'))
+}
+
+fn split_put_statement_lines<'a>(lines: impl IntoIterator<Item = &'a str>) -> Vec<String> {
     let mut statements = Vec::new();
     let mut current = String::new();
 
-    for line in text.lines() {
+    for line in lines {
         let trimmed = line.trim();
         if trimmed.starts_with('#') || trimmed.is_empty() {
             continue;
@@ -626,7 +639,7 @@ fn write_json(path: &Path, value: &Value) -> Result<()> {
         .map_err(|error| invalid(format!("failed to write {}: {error}", path.display())))
 }
 
-fn hash_bytes(bytes: &[u8]) -> String {
+pub(crate) fn hash_bytes(bytes: &[u8]) -> String {
     digest(&SHA256, bytes)
         .as_ref()
         .iter()
