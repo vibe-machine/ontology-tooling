@@ -17,6 +17,7 @@ pub mod apply;
 pub mod corpus;
 pub mod error;
 pub mod migration_contract;
+pub mod package_validator;
 pub mod version;
 
 pub use error::{Error, Result};
