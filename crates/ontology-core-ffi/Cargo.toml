@@ -1,0 +1,39 @@
+[package]
+name = "ontology-core-ffi"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "FFI shim exposing vibe-ontology's schema apply engine to Swift via UniFFI."
+publish = false
+
+[lints.rust]
+# UniFFI scaffolding generates `unsafe` code, so this crate opts out of the
+# workspace's `unsafe_code = "forbid"` for its thin FFI surface. The domain
+# logic stays in vibe-ontology, which keeps the forbid.
+unsafe_code = "allow"
+
+[lib]
+name = "ontology_core_ffi"
+# staticlib: archive linked into the xcframework.
+# cdylib: uniffi-bindgen-swift reads symbols from a dylib to emit bindings.
+# rlib: cargo check / test / downstream Rust.
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+vibe-ontology = { path = "../vibe-ontology" }
+thiserror = { workspace = true }
+# `tokio` feature gives UniFFI's async machinery a tokio-aware executor so the
+# async `#[uniffi::export]` functions poll on a real reactor.
+uniffi = { version = "0.31", features = ["cli", "tokio"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "rt", "macros"] }
+
+[build-dependencies]
+uniffi = { version = "0.31", features = ["build"] }
+
+# Standalone uniffi-bindgen binary the OntologyCore.xcframework build script
+# drives to emit the Swift module + C header.
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"

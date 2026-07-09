@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/vibe-ontology",
     "crates/ont",
+    "crates/ontology-core-ffi",
 ]
 
 [workspace.package]
