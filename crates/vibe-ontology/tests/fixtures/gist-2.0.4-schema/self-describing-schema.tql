@@ -1,0 +1,121 @@
+# Provenance bootstrap
+# upstream-repo: https://github.com/semanticarts/gist
+# upstream-tag: v14.0.0
+# upstream-commit: 6ab80c158a7fa56a1b5d3d824b125b92107e8f08
+# source-artifacts:
+# - upstream/gist/v14.0.0/ontologies/gistCore.ttl
+# - upstream/gist/v14.0.0/ontologies/gistPrefixDeclarations.ttl
+# - upstream/gist/v14.0.0/ontologies/gistValidationAnnotations.ttl
+# manifest: manifests/gist-v2.0.4.translation-manifest.json
+# generator: bootstrap-manifest/0.2.0
+
+define
+
+attribute docKey, value string;
+attribute iri, value string;
+attribute typeLabel, value string;
+attribute kind, value string;
+attribute roleName, value string;
+attribute valueTypeName, value string;
+
+attribute prefLabel, value string;
+attribute definition, value string;
+attribute scopeNote, value string;
+attribute example, value string;
+
+attribute editorialNote, value string;
+attribute altLabel, value string;
+attribute historyNote, value string;
+attribute seeAlso, value string;
+attribute domainIncludes, value string;
+attribute deprecated, value boolean;
+
+attribute moduleKey, value string;
+attribute moduleName, value string;
+attribute moduleKind, value string;
+attribute viewKey, value string;
+attribute viewName, value string;
+attribute viewDescription, value string;
+attribute viewOrder, value integer;
+attribute groupKey, value string;
+attribute groupName, value string;
+attribute groupDescription, value string;
+attribute groupOrder, value integer;
+
+entity SchemaModule,
+    owns moduleKey @key,
+    owns moduleName,
+    owns moduleKind;
+
+entity SchemaView,
+    owns viewKey @key,
+    owns viewName,
+    owns viewDescription @card(0..1),
+    owns viewOrder @card(0..1);
+
+entity SchemaGroup,
+    owns groupKey @key,
+    owns groupName,
+    owns groupDescription @card(0..1),
+    owns groupOrder @card(0..1);
+
+entity SchemaResource,
+    owns docKey @key,
+    owns iri,
+    owns typeLabel,
+    owns kind,
+    owns roleName @card(0..1),
+    owns valueTypeName @card(0..1),
+    owns prefLabel,
+    owns definition,
+    owns scopeNote @card(0..),
+    owns example @card(0..),
+    owns editorialNote @card(0..),
+    owns altLabel @card(0..),
+    owns historyNote @card(0..),
+    owns seeAlso @card(0..),
+    owns domainIncludes @card(0..),
+    owns deprecated @card(0..1);
+
+relation inModule,
+    relates resource,
+    relates module;
+
+relation groupInView,
+    relates group,
+    relates view;
+
+relation resourceInGroup,
+    relates resource,
+    relates group;
+
+relation schemaSubTypeOf,
+    relates subtypeResource,
+    relates supertypeResource;
+
+relation schemaOwns,
+    relates ownerResource,
+    relates attributeResource;
+
+relation schemaPlays,
+    relates playerResource,
+    relates roleResource;
+
+relation schemaRelates,
+    relates relationResource,
+    relates roleResource;
+
+SchemaResource plays inModule:resource;
+SchemaModule plays inModule:module;
+SchemaGroup plays groupInView:group;
+SchemaView plays groupInView:view;
+SchemaResource plays resourceInGroup:resource;
+SchemaGroup plays resourceInGroup:group;
+SchemaResource plays schemaSubTypeOf:subtypeResource;
+SchemaResource plays schemaSubTypeOf:supertypeResource;
+SchemaResource plays schemaOwns:ownerResource;
+SchemaResource plays schemaOwns:attributeResource;
+SchemaResource plays schemaPlays:playerResource;
+SchemaResource plays schemaPlays:roleResource;
+SchemaResource plays schemaRelates:relationResource;
+SchemaResource plays schemaRelates:roleResource;

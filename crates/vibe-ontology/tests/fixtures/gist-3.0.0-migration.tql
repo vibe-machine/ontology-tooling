@@ -1,0 +1,96 @@
+# Migration: gist structural property hierarchy schema preparation
+# Adds structural TypeDB subtyping for gist property hierarchies, then
+# removes redundant direct value declarations from child attributes.
+
+define
+attribute actualEndDate sub actualEndDateTime;
+attribute actualEndDateTime sub endDateTime;
+attribute actualEndMicrosecond sub actualEndDateTime;
+attribute actualEndMinute sub actualEndDateTime;
+attribute actualEndYear sub actualEndDateTime;
+attribute actualStartDate sub actualStartDateTime;
+attribute actualStartDateTime sub startDateTime;
+attribute actualStartMicrosecond sub actualStartDateTime;
+attribute actualStartMinute sub actualStartDateTime;
+attribute actualStartYear sub actualStartDateTime;
+attribute birthDate sub startDateTime;
+attribute deathDate sub actualEndDate;
+attribute encryptedText sub containedText;
+attribute endDateTime sub atDateTime;
+attribute isRecordedAt sub atDateTime;
+attribute plannedEndDate sub plannedEndDateTime;
+attribute plannedEndDateTime sub endDateTime;
+attribute plannedEndMinute sub plannedEndDateTime;
+attribute plannedEndYear sub plannedEndDateTime;
+attribute plannedStartDate sub plannedStartDateTime;
+attribute plannedStartDateTime sub startDateTime;
+attribute plannedStartMinute sub plannedStartDateTime;
+attribute plannedStartYear sub plannedStartDateTime;
+attribute startDateTime sub atDateTime;
+attribute uniqueText sub containedText;
+relation comesFromAgent sub hasParticipant,
+    relates comesFromAgentSubject as hasParticipantSubject,
+    relates comesFromAgentObject as hasParticipantObject;
+relation goesToAgent sub hasParticipant,
+    relates goesToAgentSubject as hasParticipantSubject,
+    relates goesToAgentObject as hasParticipantObject;
+relation hasDirectBroader sub hasBroader,
+    relates hasDirectBroaderSubject as hasBroaderSubject,
+    relates hasDirectBroaderObject as hasBroaderObject;
+relation hasGiver sub hasParticipant,
+    relates hasGiverSubject as hasParticipantSubject,
+    relates hasGiverObject as hasParticipantObject;
+relation hasParty sub hasParticipant,
+    relates hasPartySubject as hasParticipantSubject,
+    relates hasPartyObject as hasParticipantObject;
+relation hasRecipient sub hasParticipant,
+    relates hasRecipientSubject as hasParticipantSubject,
+    relates hasRecipientObject as hasParticipantObject;
+relation hasUniqueBroader sub hasBroader,
+    relates hasUniqueBroaderSubject as hasBroaderSubject,
+    relates hasUniqueBroaderObject as hasBroaderObject;
+relation hasUniqueNavigationalParent sub hasNavigationalParent,
+    relates hasUniqueNavigationalParentSubject as hasNavigationalParentSubject,
+    relates hasUniqueNavigationalParentObject as hasNavigationalParentObject;
+relation isDirectPartOf sub isPartOf,
+    relates isDirectPartOfSubject as isPartOfSubject,
+    relates isDirectPartOfObject as isPartOfObject;
+relation isFirstMemberOf sub isMemberOf,
+    relates isFirstMemberOfSubject as isMemberOfSubject,
+    relates isFirstMemberOfObject as isMemberOfObject;
+relation linksFrom sub linksRel,
+    relates linksFromSubject as linksRelSubject,
+    relates linksFromObject as linksRelObject;
+relation linksTo sub linksRel,
+    relates linksToSubject as linksRelSubject,
+    relates linksToObject as linksRelObject;
+relation precedesDirectly sub precedes,
+    relates precedesDirectlySubject as precedesSubject,
+    relates precedesDirectlyObject as precedesObject;
+
+undefine
+value datetime from actualEndDate;
+value datetime from actualEndDateTime;
+value datetime from actualEndMicrosecond;
+value datetime from actualEndMinute;
+value datetime from actualEndYear;
+value datetime from actualStartDate;
+value datetime from actualStartDateTime;
+value datetime from actualStartMicrosecond;
+value datetime from actualStartMinute;
+value datetime from actualStartYear;
+value datetime from birthDate;
+value datetime from deathDate;
+value string from encryptedText;
+value datetime from endDateTime;
+value datetime from isRecordedAt;
+value datetime from plannedEndDate;
+value datetime from plannedEndDateTime;
+value datetime from plannedEndMinute;
+value datetime from plannedEndYear;
+value datetime from plannedStartDate;
+value datetime from plannedStartDateTime;
+value datetime from plannedStartMinute;
+value datetime from plannedStartYear;
+value datetime from startDateTime;
+value string from uniqueText;

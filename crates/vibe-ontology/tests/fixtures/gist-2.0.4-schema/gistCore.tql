@@ -1,0 +1,955 @@
+# Provenance bootstrap
+# upstream-repo: https://github.com/semanticarts/gist
+# upstream-tag: v14.0.0
+# upstream-commit: 6ab80c158a7fa56a1b5d3d824b125b92107e8f08
+# source-artifacts:
+# - upstream/gist/v14.0.0/ontologies/gistCore.ttl
+# - upstream/gist/v14.0.0/ontologies/gistMediaTypes.ttl
+# - upstream/gist/v14.0.0/ontologies/gistPrefixDeclarations.ttl
+# - upstream/gist/v14.0.0/ontologies/gistValidationAnnotations.ttl
+# manifest: manifests/gist-v2.0.4.translation-manifest.json
+# generator: gist-structural-emitter/0.5.0
+
+define
+
+attribute actualEndDate value datetime;
+attribute actualEndDateTime value datetime;
+attribute actualEndMicrosecond value datetime;
+attribute actualEndMinute value datetime;
+attribute actualEndYear value datetime;
+attribute actualStartDate value datetime;
+attribute actualStartDateTime value datetime;
+attribute actualStartMicrosecond value datetime;
+attribute actualStartMinute value datetime;
+attribute actualStartYear value datetime;
+attribute atDateTime value datetime;
+attribute birthDate value datetime;
+attribute containedText value string;
+attribute conversionFactor value double;
+attribute conversionOffset value double;
+attribute deathDate value datetime;
+attribute description value string;
+attribute encryptedText value string;
+attribute endDateTime value datetime;
+attribute exponentOfAmpere value double;
+attribute exponentOfBit value double;
+attribute exponentOfCandela value double;
+attribute exponentOfKelvin value double;
+attribute exponentOfKilogram value double;
+attribute exponentOfMeter value double;
+attribute exponentOfMole value double;
+attribute exponentOfNumber value double;
+attribute exponentOfOther value double;
+attribute exponentOfRadian value double;
+attribute exponentOfSecond value double;
+attribute exponentOfSteradian value double;
+attribute exponentOfUSDollar value double;
+attribute idText value string;
+attribute isRecordedAt value datetime;
+attribute latitude value double;
+attribute longitude value double;
+attribute name value string;
+attribute numericValue value double;
+attribute plannedEndDate value datetime;
+attribute plannedEndDateTime value datetime;
+attribute plannedEndMinute value datetime;
+attribute plannedEndYear value datetime;
+attribute plannedStartDate value datetime;
+attribute plannedStartDateTime value datetime;
+attribute plannedStartMinute value datetime;
+attribute plannedStartYear value datetime;
+attribute sequence value integer;
+attribute sourceIRI value string;
+attribute startDateTime value datetime;
+attribute symbol value string;
+attribute uniqueText value string;
+
+# allows: Relates a permission to a particular activity or type of activity it allows.
+relation allows,
+    relates allowsSubject,
+    relates allowsObject;
+
+# comesFromAgent: Relates something to the originating agent.
+relation comesFromAgent,
+    relates comesFromAgentSubject,
+    relates comesFromAgentObject;
+
+# comesFromPlace: Relates something to its place of origin.
+relation comesFromPlace,
+    relates comesFromPlaceSubject,
+    relates comesFromPlaceObject;
+
+# conformsTo: The subject is consistent with or satisfies the requirements, rules, or expectations established by the object.
+relation conformsTo,
+    relates conformsToSubject,
+    relates conformsToObject;
+
+# contributesTo: Relates a part of a system to the system whose goals or function it contributes to.
+relation contributesTo,
+    relates contributesToSubject,
+    relates contributesToObject;
+
+# goesToAgent: Relates something to the agent that receives it.
+relation goesToAgent,
+    relates goesToAgentSubject,
+    relates goesToAgentObject;
+
+# goesToPlace: Relates something to its destination place.
+relation goesToPlace,
+    relates goesToPlaceSubject,
+    relates goesToPlaceObject;
+
+# hasAccuracy: Relates a magnitude to another magnitude that describes its accuracy.
+# hasAccuracy: functional in OWL
+relation hasAccuracy,
+    relates hasAccuracySubject,
+    relates hasAccuracyObject;
+
+# hasAddend: Relates an aspect to another aspect that is an additive component of it.
+relation hasAddend,
+    relates hasAddendSubject,
+    relates hasAddendObject;
+
+# hasAddress: Relates something to its physical or electronic address.
+relation hasAddress,
+    relates hasAddressSubject,
+    relates hasAddressObject;
+
+# hasAspect: Relates a magnitude to its aspect (measurable characteristic).
+# hasAspect: functional in OWL
+relation hasAspect,
+    relates hasAspectSubject,
+    relates hasAspectObject;
+
+# hasBiologicalParent: Relates a living thing to its biological parent.
+relation hasBiologicalParent,
+    relates hasBiologicalParentSubject,
+    relates hasBiologicalParentObject;
+
+# hasBroader: Relates a thing to another thing with a broader meaning.
+# hasBroader: transitive in OWL
+relation hasBroader,
+    relates hasBroaderSubject,
+    relates hasBroaderObject;
+
+# hasDirectBroader: Relates a thing to another thing with a broader meaning, when there is no intermediate between them.
+relation hasDirectBroader,
+    relates hasDirectBroaderSubject,
+    relates hasDirectBroaderObject;
+
+# hasDivisor: Relates a unit of measure to another unit of measure that is a divisor, or relates an aspect to another aspect that is a divisor.
+relation hasDivisor,
+    relates hasDivisorSubject,
+    relates hasDivisorObject;
+
+# hasGiver: Relates something to the participant that provides it.
+relation hasGiver,
+    relates hasGiverSubject,
+    relates hasGiverObject;
+
+# hasGoal: Relates something to the end towards which it directs effort.
+relation hasGoal,
+    relates hasGoalSubject,
+    relates hasGoalObject;
+
+# hasIncumbent: Relates a position to the thing or person that currently holds that position.
+relation hasIncumbent,
+    relates hasIncumbentSubject,
+    relates hasIncumbentObject;
+
+# hasMagnitude: Relates a thing to a magnitude.
+relation hasMagnitude,
+    relates hasMagnitudeSubject,
+    relates hasMagnitudeObject;
+
+# hasMultiplier: Relates a unit of measure to another unit of measure that is a factor, or relates an aspect to another aspect that is a factor.
+relation hasMultiplier,
+    relates hasMultiplierSubject,
+    relates hasMultiplierObject;
+
+# hasNavigationalParent: Relates a child category to a parent category in an informal (e.g., faceted) hierarchy.
+relation hasNavigationalParent,
+    relates hasNavigationalParentSubject,
+    relates hasNavigationalParentObject;
+
+# hasParticipant: Relates something (e.g. an agreement) to things that play a role, or take part or are otherwise involved in some way.
+relation hasParticipant,
+    relates hasParticipantSubject,
+    relates hasParticipantObject;
+
+# hasParty: Relates an event, agreement, or obligation to a participating person or organization.
+relation hasParty,
+    relates hasPartySubject,
+    relates hasPartyObject;
+
+# hasPhysicalLocation: Relates something to its physical location.
+# hasPhysicalLocation: transitive in OWL
+relation hasPhysicalLocation,
+    relates hasPhysicalLocationSubject,
+    relates hasPhysicalLocationObject;
+
+# hasRecipient: Relates something to the participant that receives or is intended to receive it.
+relation hasRecipient,
+    relates hasRecipientSubject,
+    relates hasRecipientObject;
+
+# hasSubtrahend: Relates an aspect to another aspect that is a subtracted component of it.
+relation hasSubtrahend,
+    relates hasSubtrahendSubject,
+    relates hasSubtrahendObject;
+
+# hasUniqueBroader: Relates a thing to a unique other thing with a broader meaning.
+# hasUniqueBroader: functional in OWL
+relation hasUniqueBroader,
+    relates hasUniqueBroaderSubject,
+    relates hasUniqueBroaderObject;
+
+# hasUniqueNavigationalParent: Relates a subject category to a unique parent category in an informal (e.g., faceted) hierarchy.
+# hasUniqueNavigationalParent: functional in OWL
+relation hasUniqueNavigationalParent,
+    relates hasUniqueNavigationalParentSubject,
+    relates hasUniqueNavigationalParentObject;
+
+# hasUnitGroup: Relates an aspect to a unit group. The aspect can be measured using any of the members of the unit group.
+relation hasUnitGroup,
+    relates hasUnitGroupSubject,
+    relates hasUnitGroupObject;
+
+# hasUnitOfMeasure: Relates a magnitude to its unit of measure.
+relation hasUnitOfMeasure,
+    relates hasUnitOfMeasureSubject,
+    relates hasUnitOfMeasureObject;
+
+# isAbout: Subject matter of a document.
+relation isAbout,
+    relates isAboutSubject,
+    relates isAboutObject;
+
+# isAffectedBy: Relates an affected thing to the source of the effect.
+relation isAffectedBy,
+    relates isAffectedBySubject,
+    relates isAffectedByObject;
+
+# isAllocatedBy: Relates something to whomever or whatever assigns or distributes it.
+relation isAllocatedBy,
+    relates isAllocatedBySubject,
+    relates isAllocatedByObject;
+
+# isAssignmentOf: Relates an assignment to the resource it assigns.
+relation isAssignmentOf,
+    relates isAssignmentOfSubject,
+    relates isAssignmentOfObject;
+
+# isAssignmentTo: Relates something (typically an assignment) to the thing the resource is assigned to, such as a project, position, organization, pay rate, or billing rate.
+relation isAssignmentTo,
+    relates isAssignmentToSubject,
+    relates isAssignmentToObject;
+
+# isBasedOn: The object is a foundation for, a starting point for, gave rise to, or justifies the subject.
+relation isBasedOn,
+    relates isBasedOnSubject,
+    relates isBasedOnObject;
+
+# isCategorizedBy: Relates something to a taxonomy term or other less formally defined classification.
+relation isCategorizedBy,
+    relates isCategorizedBySubject,
+    relates isCategorizedByObject;
+
+# isConnectedTo: A non-owning, non-causal, non-subordinate (i.e., peer-to-peer) relationship.
+# isConnectedTo: symmetric in OWL
+relation isConnectedTo,
+    relates isConnectedToSubject,
+    relates isConnectedToObject;
+
+# isDirectPartOf: The relationship between a part and a whole where the part has independent existence and there are no other parts in between.
+relation isDirectPartOf,
+    relates isDirectPartOfSubject,
+    relates isDirectPartOfObject;
+
+# isExpressedIn: Relates something to the language it is expressed in.
+relation isExpressedIn,
+    relates isExpressedInSubject,
+    relates isExpressedInObject;
+
+# isFirstMemberOf: Relates the first member of an ordered collection to the collection.
+# isFirstMemberOf: functional in OWL
+relation isFirstMemberOf,
+    relates isFirstMemberOfSubject,
+    relates isFirstMemberOfObject;
+
+# isGeoContainedIn: Relates one geographic location to another that contains it.
+# isGeoContainedIn: transitive in OWL
+relation isGeoContainedIn,
+    relates isGeoContainedInSubject,
+    relates isGeoContainedInObject;
+
+# isGovernedBy: Relates an entity to another entity that controls, directs, determines or has a guiding influence or authority over it.
+relation isGovernedBy,
+    relates isGovernedBySubject,
+    relates isGovernedByObject;
+
+# isIdentifiedBy: Relates something to a content object that uniquely identifies it.
+# isIdentifiedBy: inverse-functional in OWL
+relation isIdentifiedBy,
+    relates isIdentifiedBySubject,
+    relates isIdentifiedByObject;
+
+# isMadeUpOf: Relates something to a substance that it is made up of.
+relation isMadeUpOf,
+    relates isMadeUpOfSubject,
+    relates isMadeUpOfObject;
+
+# isMemberOf: Relates a member individual to the thing, such as a collection or organization, that it is a member of.
+relation isMemberOf,
+    relates isMemberOfSubject,
+    relates isMemberOfObject;
+
+# isPartOf: The relationship between a part and a whole where the part has independent existence.
+# isPartOf: transitive in OWL
+relation isPartOf,
+    relates isPartOfSubject,
+    relates isPartOfObject;
+
+# isProducedBy: Relates something to the thing that created, composed, or brought it into existence.
+relation isProducedBy,
+    relates isProducedBySubject,
+    relates isProducedByObject;
+
+# isRecognizedBy: Relates something to a party that formally acknowledges its existence, validity, or legality.
+relation isRecognizedBy,
+    relates isRecognizedBySubject,
+    relates isRecognizedByObject;
+
+# isRenderedOn: Relates content to the media on which it is rendered.
+relation isRenderedOn,
+    relates isRenderedOnSubject,
+    relates isRenderedOnObject;
+
+# isTriggeredBy: Relates a contingency, such as an event or obligation, to the event that gives rise to it.
+relation isTriggeredBy,
+    relates isTriggeredBySubject,
+    relates isTriggeredByObject;
+
+# isUnderJurisdictionOf: Relates a law, contract, etc., to the system of law or government which has the power, right, or authority to interpret and apply it.
+relation isUnderJurisdictionOf,
+    relates isUnderJurisdictionOfSubject,
+    relates isUnderJurisdictionOfObject;
+
+# linksRel: Relates a network link to a network node that it connects to another node. Used when the connection is undirected or the direction is not known.
+relation linksRel,
+    relates linksRelSubject,
+    relates linksRelObject;
+
+# linksFrom: Relates a network link to its origin network node. Unlike the superproperty, this represents a directed connection.
+relation linksFrom,
+    relates linksFromSubject,
+    relates linksFromObject;
+
+# linksTo: Relates a network link to its destination network node. Unlike the superproperty, this represents a directed connection.
+relation linksTo,
+    relates linksToSubject,
+    relates linksToObject;
+
+# occursIn: Relates something, such as an event, to the geographic location where it did, does, or will happen.
+relation occursIn,
+    relates occursInSubject,
+    relates occursInObject;
+
+# offersToProvide: Relates an offer to the thing being made available for exchange.
+relation offersToProvide,
+    relates offersToProvideSubject,
+    relates offersToProvideObject;
+
+# offersToReceive: Relates an offer to the thing expected in return for the offered item.
+relation offersToReceive,
+    relates offersToReceiveSubject,
+    relates offersToReceiveObject;
+
+# ownsRel: Relates a party to something that it possesses and controls.
+relation ownsRel,
+    relates ownsRelSubject,
+    relates ownsRelObject;
+
+# precedes: A generic ordering relation indicating that the subject comes before the object.
+# precedes: transitive in OWL
+relation precedes,
+    relates precedesSubject,
+    relates precedesObject;
+
+# precedesDirectly: A generic ordering relation indicating that the subject comes immediately before the object.
+relation precedesDirectly,
+    relates precedesDirectlySubject,
+    relates precedesDirectlyObject;
+
+# prevents: Relates an intention to behavior that it prohibits.
+relation prevents,
+    relates preventsSubject,
+    relates preventsObject;
+
+# providesOrderFor: Links a member of an ordered collection to the real-world item it represents in that collection.
+# providesOrderFor: functional in OWL
+relation providesOrderFor,
+    relates providesOrderForSubject,
+    relates providesOrderForObject;
+
+# refersTo: Relates something to another resource that it points to, indicates, or references.
+relation refersTo,
+    relates refersToSubject,
+    relates refersToObject;
+
+# requires: The subject needs the object or makes it necessary, mandatory, or compulsory.
+relation requires,
+    relates requiresSubject,
+    relates requiresObject;
+
+# An agreement having a balance.
+entity Account sub Agreement,
+    plays hasMagnitude:hasMagnitudeSubject;
+
+# A reference to a place (real or virtual) that can be located by some routing algorithm and where messages or things can be sent or received.
+entity Address sub Content,
+    plays comesFromPlace:comesFromPlaceObject,
+    plays goesToPlace:goesToPlaceObject,
+    plays hasAddress:hasAddressObject;
+
+# A category indicating the context or manner in which an address may be used.
+entity AddressUsageType sub Category;
+
+# A mutually understood arrangement in which two or more parties make commitments to one another.
+entity Agreement sub Intention,
+    plays hasParty:hasPartySubject,
+    plays isDirectPartOf:isDirectPartOfObject;
+
+# A measurable characteristic.
+entity Aspect sub Thing,
+    owns description,
+    owns name,
+    owns sourceIRI,
+    plays hasAspect:hasAspectObject,
+    plays hasUnitGroup:hasUnitGroupSubject;
+
+# A temporal relationship between an assignee, the thing assigned, and the resource that made the assignment.
+entity Assignment sub TemporalRelation,
+    plays isAssignmentOf:isAssignmentOfSubject,
+    plays isAssignmentTo:isAssignmentToSubject;
+
+# A category indicating the nature of an activity.
+entity Behavior sub Category,
+    plays allows:allowsObject,
+    plays prevents:preventsObject;
+
+# A relatively permanent man-made structure situated on a plot of land, having a roof and walls, commonly used for dwelling, entertaining, or working.
+entity Building sub Landmark;
+
+# Any combination of descriptions of things offered together.
+entity BundledCatalogItem sub CatalogItem,
+    plays isDirectPartOf:isDirectPartOfObject;
+
+# A description of a product or service to be delivered, given in a sufficient level of detail that a receiver could determine whether delivery constituted discharge of the obligation to deliver.
+entity CatalogItem sub Specification,
+    plays isDirectPartOf:isDirectPartOfSubject;
+
+# A concept or label used to categorize other instances without specifying any formal semantics.
+entity Category sub Thing,
+    plays isAllocatedBy:isAllocatedBySubject,
+    plays isFirstMemberOf:isFirstMemberOfSubject,
+    plays isMemberOf:isMemberOfSubject;
+
+# A grouping of things.
+entity Collection sub Composite;
+
+# A promise made by a single party to one or more parties to do or not do something or act in a particular way.
+entity Commitment sub Intention,
+    plays hasGiver:hasGiverSubject,
+    plays isCategorizedBy:isCategorizedBySubject,
+    plays isDirectPartOf:isDirectPartOfSubject;
+
+# Something that, while having an independent existence, is inherently part of or designed to be part of a larger entity, such as a system or network.
+entity Component sub Thing,
+    plays isDirectPartOf:isDirectPartOfSubject;
+
+# Something which is made up of various parts or elements that are independently identifiable.
+entity Composite sub Thing;
+
+# An event that has started but has not yet ended.
+entity ContemporaryEvent sub Event,
+    owns actualEndDate,
+    owns actualEndDateTime,
+    owns actualEndMicrosecond,
+    owns actualEndMinute,
+    owns actualEndYear,
+    owns actualStartDate,
+    owns actualStartDateTime,
+    owns actualStartMicrosecond,
+    owns actualStartMinute,
+    owns actualStartYear,
+    owns deathDate;
+
+# Information available in some medium.
+entity Content sub Thing,
+    plays isAbout:isAboutSubject;
+
+# Intellectual property reduced to text, audio, etc.  If it contains text (written or spoken), it will be expressed in a language.
+entity ContentExpression sub Content,
+    plays isCategorizedBy:isCategorizedBySubject;
+
+# An event with a probability of happening in the future, and usually dependent upon some other event or condition.
+entity ContingentEvent sub Event,
+    plays hasMagnitude:hasMagnitudeSubject,
+    plays isTriggeredBy:isTriggeredBySubject;
+
+# An obligation that is not yet firm. There is some contingent event whose occurrence will cause the obligation to become firm.
+entity ContingentObligation sub Commitment,
+    plays isTriggeredBy:isTriggeredBySubject;
+
+# An agreement which can be enforced by law.
+entity Contract sub Agreement,
+    plays isUnderJurisdictionOf:isUnderJurisdictionOfSubject;
+
+# A specification of some aspect of a contract.
+entity ContractTerm sub Specification;
+
+# A collection of terms approved and managed by some organization or person.
+entity ControlledVocabulary sub Collection,
+    plays isFirstMemberOf:isFirstMemberOfObject,
+    plays isGovernedBy:isGovernedBySubject,
+    plays isMemberOf:isMemberOfObject;
+
+# A geographic region governed by exactly one country government.
+entity CountryGeoRegion sub GovernedGeoRegion;
+
+# A government organization which asserts both sovereignty (i.e., it is not governed by some other government organization) and governance over an entity generally recognized as a country.
+entity CountryGovernment sub GovernmentOrganization,
+    plays isGovernedBy:isGovernedBySubject;
+
+# The difficulty of reversing a commitment.
+entity DegreeOfCommitment sub Category,
+    plays isCategorizedBy:isCategorizedByObject;
+
+# An event whose purpose is to establish a specific result, value, or outcome, usually by research, measuring, evaluating, or calculating.
+entity Determination sub Event;
+
+# An area of study or practice.
+entity Discipline sub Category;
+
+# An address referring to a locatable virtual place that does not physically exist but is made by software or electronics to appear to do so.
+entity ElectronicAddress sub Address;
+
+# A category indicating a kind of electronic address. Such a category is usually based on the technology that enables routing to the address referent.
+entity ElectronicAddressType sub Category;
+
+# Human-made, tangible property other than land or buildings used to perform a task or activity.
+entity Equipment sub PhysicalIdentifiableItem,
+    plays isCategorizedBy:isCategorizedBySubject;
+
+# A category of equipment.
+entity EquipmentType sub Category,
+    plays isCategorizedBy:isCategorizedByObject;
+
+# Something that occurs over a period of time, often characterized as an activity being carried out by some person, organization, or software application or brought about by natural forces.
+entity Event sub Thing,
+    plays isBasedOn:isBasedOnSubject,
+    plays isTriggeredBy:isTriggeredByObject;
+
+# A characterization of an event that might happen.
+entity EventSpecification sub Specification;
+
+# Content which is in a particular format.
+entity FormattedContent sub ContentExpression,
+    plays isExpressedIn:isExpressedInSubject;
+
+# The activity that a human-made item is intended to perform.
+entity Function sub Intention;
+
+# The real-world media type for content.
+entity GeneralMediaType sub Category,
+    plays isCategorizedBy:isCategorizedByObject;
+
+# A physical location, with the earth as a frame of reference.
+entity GeoLocation sub Thing,
+    plays comesFromPlace:comesFromPlaceObject,
+    plays goesToPlace:goesToPlaceObject,
+    plays hasPhysicalLocation:hasPhysicalLocationObject,
+    plays isGeoContainedIn:isGeoContainedInObject,
+    plays isGeoContainedIn:isGeoContainedInSubject,
+    plays occursIn:occursInObject,
+    plays refersTo:refersToObject;
+
+# An individual point on or above the Earth's surface, identified by latitude, longitude and altitude. Altitude is the distance measured from sea level. If altitude is missing, the point is assumed to be at the Earth's surface. These points are described using decimal latitude/longitude.
+entity GeoPoint sub GeoLocation,
+    owns latitude,
+    owns longitude,
+    plays hasMagnitude:hasMagnitudeSubject,
+    plays isFirstMemberOf:isFirstMemberOfSubject,
+    plays isMemberOf:isMemberOfSubject;
+
+# A bounded region (or set of regions) on the surface of the Earth.
+entity GeoRegion sub Thing,
+    plays hasMagnitude:hasMagnitudeSubject,
+    plays hasPhysicalLocation:hasPhysicalLocationObject,
+    plays isGovernedBy:isGovernedBySubject;
+
+# An ordered set of geographic points that defines a path from a starting point to an ending point.
+entity GeoRoute sub OrderedCollection;
+
+# A three-dimensional space on or near the surface of the Earth, such as an oil reservoir, the body of a lake, or an airspace.
+entity GeoVolume sub GeoLocation,
+    plays hasMagnitude:hasMagnitudeSubject;
+
+# A geographic region governed by at least one government organization.
+entity GovernedGeoRegion sub GeoRegion;
+
+# An independent organization exercising political and/or regulatory authority over a political unit, people, geographical region, etc., as well as performing certain functions for this unit or body.
+entity GovernmentOrganization sub Organization,
+    plays isFirstMemberOf:isFirstMemberOfSubject,
+    plays isMemberOf:isMemberOfSubject,
+    plays isUnderJurisdictionOf:isUnderJurisdictionOfObject;
+
+# An event which occurred in time, with an actual end earlier than the present moment.
+entity HistoricalEvent sub Event,
+    owns actualEndDate,
+    owns actualEndDateTime,
+    owns actualEndMicrosecond,
+    owns actualEndMinute,
+    owns actualEndYear,
+    owns actualStartDate,
+    owns actualStartDateTime,
+    owns actualStartMicrosecond,
+    owns actualStartMinute,
+    owns actualStartYear,
+    owns deathDate;
+
+# Content that is used to uniquely identify something or someone.
+entity ID sub Content,
+    owns uniqueText,
+    plays isAllocatedBy:isAllocatedBySubject,
+    plays isIdentifiedBy:isIdentifiedByObject;
+
+# An intangible work, invention, or concept, independent of its being expressed in text, audio, video, image, or live performance. IP can also be tacit knowledge, know-how, or skill.
+entity IntellectualProperty sub Thing,
+    plays isAllocatedBy:isAllocatedByObject;
+
+# A goal, desire, or aspiration.
+entity Intention sub Thing,
+    plays hasGoal:hasGoalObject,
+    plays prevents:preventsSubject;
+
+# An organization whose members are government organizations. This can comprise regional, municipal, state/province, or national level entities.
+entity IntergovernmentalOrganization sub Organization,
+    plays isFirstMemberOf:isFirstMemberOfObject,
+    plays isMemberOf:isMemberOfObject;
+
+# An abstract concept that arises from the distillation of experience. It is similar to a category but, rather than being a simple tag, it has rich structure.
+entity KnowledgeConcept sub IntellectualProperty;
+
+# Something permanently attached to the Earth.
+entity Landmark sub PhysicalIdentifiableItem,
+    plays hasPhysicalLocation:hasPhysicalLocationSubject;
+
+# A recognized, organized set of symbols and grammar.
+entity Language sub Thing,
+    plays isExpressedIn:isExpressedInObject;
+
+# Something that is currently, or at some point in time was, alive.
+entity LivingThing sub PhysicalIdentifiableItem,
+    owns birthDate,
+    plays hasBiologicalParent:hasBiologicalParentObject,
+    plays hasBiologicalParent:hasBiologicalParentSubject;
+
+# The amount of a measurable characteristic (aspect).
+entity Magnitude sub Thing,
+    owns numericValue,
+    plays hasAccuracy:hasAccuracyObject,
+    plays hasAspect:hasAspectSubject,
+    plays hasMagnitude:hasMagnitudeObject,
+    plays hasUnitOfMeasure:hasUnitOfMeasureSubject;
+
+# A digitized type that computer applications can recognize.
+entity MediaType sub Category,
+    owns name,
+    owns sourceIRI,
+    owns uniqueText,
+    plays isExpressedIn:isExpressedInObject;
+
+# A physical material on which a work can be rendered, represented, or implemented.
+entity Medium sub Category,
+    plays isRenderedOn:isRenderedOnObject;
+
+# A specific instance of content sent from a sender to at least one other recipient.
+entity Message sub ContentExpression,
+    plays comesFromAgent:comesFromAgentSubject,
+    plays goesToAgent:goesToAgentSubject;
+
+# A composite consisting of nodes connected by links.
+entity Network sub Composite,
+    plays isFirstMemberOf:isFirstMemberOfObject,
+    plays isMemberOf:isMemberOfObject;
+
+# An abstract representation of the connection between two or more nodes in a network.
+entity NetworkLink sub Component,
+    plays isFirstMemberOf:isFirstMemberOfSubject,
+    plays isMemberOf:isMemberOfSubject,
+    plays linksFrom:linksFromSubject,
+    plays linksRel:linksRelSubject,
+    plays linksTo:linksToSubject;
+
+# A node in a network.
+entity NetworkNode sub Component,
+    plays isFirstMemberOf:isFirstMemberOfSubject,
+    plays isMemberOf:isMemberOfSubject,
+    plays linksFrom:linksFromObject,
+    plays linksRel:linksRelObject,
+    plays linksTo:linksToObject;
+
+# A contingent commitment to buy, sell, swap or provide one or more described or identified goods or services in exchange for another (or others).
+entity Offer sub ContingentObligation,
+    owns plannedEndDate,
+    owns plannedEndDateTime,
+    owns plannedEndMinute,
+    owns plannedEndYear,
+    owns plannedStartDate,
+    owns plannedStartDateTime,
+    owns plannedStartMinute,
+    owns plannedStartYear,
+    plays offersToProvide:offersToProvideSubject,
+    plays offersToReceive:offersToReceiveSubject;
+
+# A collection whose members are ordered in some way.
+entity OrderedCollection sub Collection,
+    plays isFirstMemberOf:isFirstMemberOfObject,
+    plays isMemberOf:isMemberOfObject;
+
+# A member of an ordered collection serving as a proxy for a real world item, which can appear in different orders in different collections. The ordered member appears in exactly one ordered collection.
+entity OrderedMember sub Component,
+    owns sequence,
+    plays isFirstMemberOf:isFirstMemberOfSubject,
+    plays isMemberOf:isMemberOfSubject,
+    plays precedesDirectly:precedesDirectlyObject,
+    plays precedesDirectly:precedesDirectlySubject,
+    plays providesOrderFor:providesOrderForSubject;
+
+# A structured entity formed to achieve specific goals, typically involving members with defined roles.
+entity Organization sub Thing,
+    plays comesFromAgent:comesFromAgentObject,
+    plays goesToAgent:goesToAgentObject,
+    plays hasParty:hasPartyObject,
+    plays isAllocatedBy:isAllocatedByObject,
+    plays isGovernedBy:isGovernedByObject,
+    plays isRecognizedBy:isRecognizedByObject,
+    plays ownsRel:ownsRelSubject;
+
+# A description of things one is permitted to do.
+entity Permission sub Intention,
+    plays allows:allowsSubject;
+
+# A human being who was or is alive.
+entity Person sub LivingThing,
+    plays comesFromAgent:comesFromAgentObject,
+    plays goesToAgent:goesToAgentObject,
+    plays hasParty:hasPartyObject,
+    plays isAllocatedBy:isAllocatedByObject,
+    plays isGovernedBy:isGovernedByObject,
+    plays isRecognizedBy:isRecognizedByObject,
+    plays ownsRel:ownsRelSubject;
+
+# A category indicating the type of an action based on its effect in the physical world.
+entity PhysicalActionType sub Category;
+
+# An address that refers to a locatable place within the physical universe.
+entity PhysicalAddress sub Address,
+    plays refersTo:refersToSubject;
+
+# A category indicating local customary characterizations of physical addresses.
+entity PhysicalAddressType sub Category;
+
+# An event that can be said to have occurred at some place in space.
+entity PhysicalEvent sub Event,
+    plays occursIn:occursInSubject;
+
+# A discrete physical object which, if subdivided, will result in parts that are distinguishable in nature from the whole and in general also from the other parts.
+entity PhysicalIdentifiableItem sub Thing,
+    plays hasMagnitude:hasMagnitudeSubject,
+    plays isMadeUpOf:isMadeUpOfSubject;
+
+# An undifferentiated amount of physical material which, when subdivided, results in each part being indistinguishable in nature from the whole and from every other part.
+entity PhysicalSubstance sub Thing,
+    plays hasMagnitude:hasMagnitudeSubject,
+    plays isMadeUpOf:isMadeUpOfObject;
+
+# Any of many ways of categorizing products.
+entity ProductCategory sub Category,
+    plays isCategorizedBy:isCategorizedByObject;
+
+# Offering something which could be physically warehoused or digitally stored.
+entity ProductSpecification sub CatalogItem,
+    plays isCategorizedBy:isCategorizedBySubject;
+
+# A task, usually of longer duration, made up of other tasks.
+entity Project sub Task,
+    plays isDirectPartOf:isDirectPartOfObject,
+    plays isPartOf:isPartOfObject;
+
+# A magnitude that was neither measured nor estimated but set by fiat.
+entity ReferenceValue sub Magnitude;
+
+# Content which has been physically expressed.
+entity RenderedContent sub FormattedContent,
+    plays isRenderedOn:isRenderedOnSubject;
+
+# The obligation of a person or organization to behave in a certain way.
+entity Requirement sub Intention;
+
+# A description of things one is prevented from doing.
+entity Restriction sub Intention;
+
+# An event with a planned start datetime.
+entity ScheduledEvent sub Event,
+    owns plannedStartDate,
+    owns plannedStartDateTime,
+    owns plannedStartMinute,
+    owns plannedStartYear;
+
+# A task with a planned start datetime.
+entity ScheduledTask sub ScheduledEvent;
+
+# Superclass for all types of metadata.
+entity SchemaMetaData sub Thing;
+
+# A description of something that can be done for a person or organization (which produces some form of an act).
+entity ServiceSpecification sub CatalogItem,
+    plays isBasedOn:isBasedOnObject;
+
+# One or more characteristics that specify what it means to be a particular type of thing, such as a material, product, service or event. A specification is sufficiently precise to allow evaluating conformance to the specification.
+entity Specification sub Intention;
+
+# The government of a governed geographic region other than a country which is under the direct or indirect control of a country government.
+entity SubCountryGovernment sub GovernmentOrganization,
+    plays isGovernedBy:isGovernedBySubject;
+
+# A composite with component parts that contribute to the goal of the system.
+entity System sub Composite,
+    plays isDirectPartOf:isDirectPartOfObject;
+
+# A term in a folksonomy used to categorize things. Tags can be made up on the fly by users.
+entity Tag sub Category,
+    owns containedText,
+    owns encryptedText,
+    owns uniqueText;
+
+# An activity or piece of work that is either proposed, planned, scheduled, underway, or completed.
+entity Task sub Event,
+    plays hasGoal:hasGoalSubject,
+    plays isDirectPartOf:isDirectPartOfSubject,
+    plays isPartOf:isPartOfSubject;
+
+# An outline of a task of a particular type, which is the basis for executing such tasks.
+entity TaskTemplate sub Template,
+    plays hasGoal:hasGoalSubject;
+
+# Something used to make objects in its own image.
+entity Template sub Thing;
+
+# A relationship existing for a period of time.
+entity TemporalRelation sub Thing,
+    owns actualStartDate,
+    owns actualStartDateTime,
+    owns actualStartMicrosecond,
+    owns actualStartMinute,
+    owns actualStartYear,
+    owns birthDate,
+    owns plannedStartDate,
+    owns plannedStartDateTime,
+    owns plannedStartMinute,
+    owns plannedStartYear,
+    owns startDateTime,
+    plays comesFromAgent:comesFromAgentSubject,
+    plays goesToAgent:goesToAgentSubject,
+    plays hasGiver:hasGiverSubject,
+    plays hasParticipant:hasParticipantSubject,
+    plays hasParty:hasPartySubject,
+    plays hasRecipient:hasRecipientSubject;
+
+# Content expressed as words and numbers.
+entity Text sub ContentExpression,
+    owns containedText,
+    owns encryptedText,
+    owns uniqueText,
+    plays isExpressedIn:isExpressedInSubject;
+
+# Synthetic root used to anchor owl:Thing semantics for untyped role players.
+entity Thing,
+    plays hasGiver:hasGiverObject,
+    plays isAssignmentOf:isAssignmentOfObject,
+    plays isAssignmentTo:isAssignmentToObject,
+    plays offersToProvide:offersToProvideObject,
+    plays offersToReceive:offersToReceiveObject,
+    plays providesOrderFor:providesOrderForObject;
+
+# A span of time with a known start time, end time, and duration. As long as two of the three are known, the third can be inferred.
+entity TimeInterval sub Thing,
+    owns actualEndDate,
+    owns actualEndDateTime,
+    owns actualEndMicrosecond,
+    owns actualEndMinute,
+    owns actualEndYear,
+    owns actualStartDate,
+    owns actualStartDateTime,
+    owns actualStartMicrosecond,
+    owns actualStartMinute,
+    owns actualStartYear,
+    owns birthDate,
+    owns deathDate,
+    owns endDateTime,
+    owns plannedEndDate,
+    owns plannedEndDateTime,
+    owns plannedEndMinute,
+    owns plannedEndYear,
+    owns plannedStartDate,
+    owns plannedStartDateTime,
+    owns plannedStartMinute,
+    owns plannedStartYear,
+    owns startDateTime,
+    plays hasMagnitude:hasMagnitudeSubject;
+
+# An exchange or transfer of goods, services, or funds.
+entity Transaction sub Event;
+
+# A collection of units of measure that can all be used to measure the same aspects.
+entity UnitGroup sub Collection,
+    owns exponentOfAmpere,
+    owns exponentOfBit,
+    owns exponentOfCandela,
+    owns exponentOfKelvin,
+    owns exponentOfKilogram,
+    owns exponentOfMeter,
+    owns exponentOfMole,
+    owns exponentOfNumber,
+    owns exponentOfOther,
+    owns exponentOfRadian,
+    owns exponentOfSecond,
+    owns exponentOfSteradian,
+    owns exponentOfUSDollar,
+    plays hasUnitGroup:hasUnitGroupObject,
+    plays isFirstMemberOf:isFirstMemberOfObject,
+    plays isMemberOf:isMemberOfObject;
+
+# A standard amount used to measure or specify things.
+entity UnitOfMeasure sub Thing,
+    owns conversionFactor,
+    owns conversionOffset,
+    owns exponentOfAmpere,
+    owns exponentOfBit,
+    owns exponentOfCandela,
+    owns exponentOfKelvin,
+    owns exponentOfKilogram,
+    owns exponentOfMeter,
+    owns exponentOfMole,
+    owns exponentOfNumber,
+    owns exponentOfOther,
+    owns exponentOfRadian,
+    owns exponentOfSecond,
+    owns exponentOfSteradian,
+    owns exponentOfUSDollar,
+    plays hasUnitOfMeasure:hasUnitOfMeasureObject,
+    plays isFirstMemberOf:isFirstMemberOfSubject,
+    plays isMemberOf:isMemberOfSubject;

@@ -1,0 +1,27 @@
+# Provenance bootstrap
+# upstream-repo: https://github.com/semanticarts/gist
+# upstream-tag: v14.0.0
+# upstream-commit: 6ab80c158a7fa56a1b5d3d824b125b92107e8f08
+# source-artifacts:
+# - upstream/gist/v14.0.0/ontologies/gistCore.ttl
+# - upstream/gist/v14.0.0/ontologies/gistMediaTypes.ttl
+# - upstream/gist/v14.0.0/ontologies/gistPrefixDeclarations.ttl
+# - upstream/gist/v14.0.0/ontologies/gistValidationAnnotations.ttl
+# manifest: manifests/gist-v2.0.4.translation-manifest.json
+# generator: administrative-operations-schema/0.1.0
+
+define
+
+attribute installationKey, value string;
+attribute installedAt, value string;
+
+entity OntologyModuleInstallation sub Event,
+    owns installationKey @key,
+    owns installedAt,
+    plays installationOfOntologyModuleVersion:installation;
+
+relation installationOfOntologyModuleVersion sub isBasedOn,
+    relates installation as isBasedOnSubject,
+    relates version as isBasedOnObject;
+
+OntologyModuleVersion plays installationOfOntologyModuleVersion:version;

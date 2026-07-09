@@ -53,8 +53,7 @@ pub fn discover_corpus(repo_path: impl AsRef<Path>) -> Result<Corpus> {
     validate_manifest(&manifest, "corpus/manifest.json")?;
     validate_fixture_files(&corpus_dir, &manifest)?;
 
-    let fixture_ids: HashSet<String> =
-        manifest.fixtures.iter().map(|f| f.id.clone()).collect();
+    let fixture_ids: HashSet<String> = manifest.fixtures.iter().map(|f| f.id.clone()).collect();
 
     let mut items = Vec::new();
     items.extend(load_item_dir(

@@ -24,6 +24,9 @@ pub enum Error {
 
     #[error("invalid corpus: {0}")]
     Invalid(String),
+
+    #[error("typedb error: {0}")]
+    TypeDb(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

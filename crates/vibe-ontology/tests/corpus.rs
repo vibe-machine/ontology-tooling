@@ -80,7 +80,10 @@ fn build_corpus_repo() -> TempDir {
         "insert $m isa Meeting; $d isa Decision;\n",
     );
     write(&corpus.join("queries/meeting-decisions.json"), KNOWN_GOOD);
-    write(&corpus.join("negative/missing-relation-roles.json"), NEGATIVE);
+    write(
+        &corpus.join("negative/missing-relation-roles.json"),
+        NEGATIVE,
+    );
     dir
 }
 
@@ -93,15 +96,30 @@ fn discover_loads_manifest_fixtures_queries_and_negative_items() {
     assert_eq!(corpus.items.len(), 3);
 
     let categories: Vec<_> = corpus.items.iter().map(|i| i.category).collect();
-    assert!(categories.iter().filter(|c| **c == ItemCategory::KnownGood).count() == 2);
-    assert!(categories.iter().filter(|c| **c == ItemCategory::Negative).count() == 1);
+    assert!(
+        categories
+            .iter()
+            .filter(|c| **c == ItemCategory::KnownGood)
+            .count()
+            == 2
+    );
+    assert!(
+        categories
+            .iter()
+            .filter(|c| **c == ItemCategory::Negative)
+            .count()
+            == 1
+    );
 }
 
 #[test]
 fn discover_rejects_unknown_fixture_reference() {
     let dir = build_corpus_repo();
     let bad = KNOWN_GOOD.replace("\"meeting-decisions\"", "\"does-not-exist\"");
-    write(&dir.path().join("corpus/queries/meeting-decisions.json"), &bad);
+    write(
+        &dir.path().join("corpus/queries/meeting-decisions.json"),
+        &bad,
+    );
     let err = discover_corpus(dir.path()).unwrap_err();
     assert!(matches!(err, Error::Invalid(ref msg) if msg.contains("unknown fixture id")));
 }
@@ -110,16 +128,26 @@ fn discover_rejects_unknown_fixture_reference() {
 fn discover_rejects_invalid_query_kind() {
     let dir = build_corpus_repo();
     let bad = KNOWN_GOOD.replace("\"query_kind\": \"read\"", "\"query_kind\": \"bogus\"");
-    write(&dir.path().join("corpus/queries/meeting-decisions.json"), &bad);
+    write(
+        &dir.path().join("corpus/queries/meeting-decisions.json"),
+        &bad,
+    );
     let err = discover_corpus(dir.path()).unwrap_err();
-    assert!(matches!(err, Error::Json { .. }), "expected Json deserialization error, got {err:?}");
+    assert!(
+        matches!(err, Error::Json { .. }),
+        "expected Json deserialization error, got {err:?}"
+    );
 }
 
 #[test]
 fn discover_rejects_duplicate_item_ids() {
     let dir = build_corpus_repo();
     write(&dir.path().join("corpus/queries/duplicate.json"), NEGATIVE);
-    write(&dir.path().join("corpus/negative/missing-relation-roles.json"), NEGATIVE);
+    write(
+        &dir.path()
+            .join("corpus/negative/missing-relation-roles.json"),
+        NEGATIVE,
+    );
     let err = discover_corpus(dir.path()).unwrap_err();
     assert!(matches!(err, Error::Invalid(ref msg) if msg.contains("duplicate corpus item id")));
 }
@@ -127,7 +155,11 @@ fn discover_rejects_duplicate_item_ids() {
 #[test]
 fn discover_rejects_missing_fixture_file() {
     let dir = build_corpus_repo();
-    fs::remove_file(dir.path().join("corpus/fixtures/meeting-decisions-data.tql")).unwrap();
+    fs::remove_file(
+        dir.path()
+            .join("corpus/fixtures/meeting-decisions-data.tql"),
+    )
+    .unwrap();
     let err = discover_corpus(dir.path()).unwrap_err();
     assert!(matches!(err, Error::Invalid(ref msg) if msg.contains("missing data file")));
 }

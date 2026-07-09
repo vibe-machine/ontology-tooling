@@ -1,0 +1,68 @@
+# Provenance bootstrap
+# upstream-repo: https://github.com/semanticarts/gist
+# upstream-tag: v14.0.0
+# upstream-commit: 6ab80c158a7fa56a1b5d3d824b125b92107e8f08
+# source-artifacts:
+# - upstream/gist/v14.0.0/ontologies/gistCore.ttl
+# - upstream/gist/v14.0.0/ontologies/gistMediaTypes.ttl
+# - upstream/gist/v14.0.0/ontologies/gistPrefixDeclarations.ttl
+# - upstream/gist/v14.0.0/ontologies/gistValidationAnnotations.ttl
+# manifest: manifests/gist-v2.0.4.translation-manifest.json
+# generator: package-provenance-schema/0.2.0
+
+define
+
+attribute moduleName, value string;
+attribute moduleRepoUrl, value string;
+attribute moduleVersionKey, value string;
+attribute moduleVersion, value string;
+attribute upstreamCommit, value string;
+attribute manifestPath, value string;
+attribute generatorName, value string;
+attribute generatorVersion, value string;
+attribute generatedAt, value string;
+attribute sourcePath, value string;
+attribute sourceSha256, value string;
+attribute artifactPath, value string;
+attribute artifactKind, value string;
+attribute artifactSha256, value string;
+
+entity OntologyModule sub SchemaMetaData,
+    owns moduleName,
+    owns moduleRepoUrl @key,
+    plays ontologyModuleVersionOf:module;
+
+entity OntologyModuleVersion sub SchemaMetaData,
+    owns moduleVersionKey @key,
+    owns moduleVersion,
+    owns upstreamCommit,
+    owns manifestPath,
+    owns generatorName,
+    owns generatorVersion,
+    owns generatedAt,
+    plays ontologyModuleVersionOf:version,
+    plays ontologyModuleVersionBasedOnSourceArtifact:version,
+    plays generatedArtifactForOntologyModuleVersion:version;
+
+entity SourceArtifactRecord sub SchemaMetaData,
+    owns sourcePath,
+    owns sourceSha256,
+    plays ontologyModuleVersionBasedOnSourceArtifact:sourceArtifact;
+
+entity GeneratedArtifactRecord sub SchemaMetaData,
+    owns artifactPath,
+    owns artifactKind,
+    owns artifactSha256,
+    plays generatedArtifactForOntologyModuleVersion:generatedArtifact;
+
+relation ontologyModuleVersionOf sub isBasedOn,
+    relates version as isBasedOnSubject,
+    relates module as isBasedOnObject;
+
+relation ontologyModuleVersionBasedOnSourceArtifact sub isBasedOn,
+    relates version as isBasedOnSubject,
+    relates sourceArtifact as isBasedOnObject;
+
+relation generatedArtifactForOntologyModuleVersion sub isAbout,
+    relates generatedArtifact as isAboutSubject,
+    relates version as isAboutObject;

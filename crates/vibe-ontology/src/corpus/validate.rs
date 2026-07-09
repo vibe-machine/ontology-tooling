@@ -6,10 +6,14 @@ use super::model::{CorpusItem, CorpusManifest, ExpectedKind};
 
 pub(crate) fn validate_manifest(manifest: &CorpusManifest, source: &str) -> Result<()> {
     if manifest.version == 0 {
-        return Err(invalid(format!("{source}: version must be a positive integer")));
+        return Err(invalid(format!(
+            "{source}: version must be a positive integer"
+        )));
     }
     if manifest.ontology_package.trim().is_empty() {
-        return Err(invalid(format!("{source}: ontology_package must be non-empty")));
+        return Err(invalid(format!(
+            "{source}: ontology_package must be non-empty"
+        )));
     }
     let mut seen = HashSet::new();
     for fixture in &manifest.fixtures {
@@ -45,7 +49,10 @@ pub(crate) fn validate_manifest(manifest: &CorpusManifest, source: &str) -> Resu
 pub(crate) fn validate_item(item: &CorpusItem, fixture_ids: &HashSet<String>) -> Result<()> {
     let context = format!("{}#{}", item.source, item.id);
     if item.id.trim().is_empty() {
-        return Err(invalid(format!("{}: item.id must be non-empty", item.source)));
+        return Err(invalid(format!(
+            "{}: item.id must be non-empty",
+            item.source
+        )));
     }
     if item.title.trim().is_empty() {
         return Err(invalid(format!("{context}: item.title must be non-empty")));
