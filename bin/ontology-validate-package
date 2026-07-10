@@ -1,5 +1,22 @@
 #!/usr/bin/env bash
+# Stable cross-repo entrypoint for package-contract validation.
+# Consumer repos call `../ontology-tooling/bin/ontology-validate-package --repo <path>`.
+# This shim delegates to the compiled `ont` CLI (crates/ont), building it on
+# first use if absent.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-exec node "$ROOT_DIR/src/cli/ontology-validate-package.mjs" "$@"
+BIN="$ROOT_DIR/target/release/ont"
+
+if [[ ! -x "$BIN" ]]; then
+  CARGO="$(command -v cargo || true)"
+  if [[ -z "$CARGO" && -x "$HOME/.cargo/bin/cargo" ]]; then CARGO="$HOME/.cargo/bin/cargo"; fi
+  if [[ -z "$CARGO" ]]; then
+    echo "ont: cargo not found; install Rust (https://rustup.rs) or prebuild $BIN" >&2
+    exit 1
+  fi
+  echo "ont: building the release binary on first use (one-time)..." >&2
+  ( cd "$ROOT_DIR" && "$CARGO" build --release -p ont ) 1>&2
+fi
+
+exec "$BIN" validate-package "$@"

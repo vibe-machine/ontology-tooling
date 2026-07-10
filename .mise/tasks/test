@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Run the Node test suite, including dry-run, validate-only, commit/tag, and push release flows against fixture repos"
+#MISE description="Run the Rust workspace test suite (vibe-ontology parity tests + ont CLI)"
 set -euo pipefail
 
-node --test
+cargo test --workspace

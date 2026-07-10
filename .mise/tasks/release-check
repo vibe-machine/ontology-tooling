@@ -3,4 +3,4 @@
 #USAGE arg "<repo>" help="Path to the ontology repository to validate"
 set -euo pipefail
 
-exec node src/cli/ontology-release.mjs --repo "${usage_repo?}" --validate-only
+exec "${MISE_PROJECT_ROOT:-.}/bin/ontology-release" --repo "${usage_repo?}" --validate-only

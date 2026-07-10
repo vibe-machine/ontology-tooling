@@ -4,52 +4,59 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Purpose
 
-ontology-tooling is the shared tooling hub for the `collection-vibe-machine` project. It contains:
+ontology-tooling is the shared tooling hub for the `collection-vibe-machine` project. It is a **single Rust workspace** (the former Node release tooling has been fully consolidated into it):
 
-1. **Node release tooling** — the `ontology-release` CLI that automates releases for multiple ontology repositories (local-first, not CI/CD).
-2. **Rust workspace** — the `vibe-ontology` library and the `ont` CLI/TUI binary, the durable runtime that other Vibe Machine products (OneApp, Lingo) embed.
+1. **`vibe-ontology`** — the durable, embeddable library: corpus model, schema/migration-contract validation, package-release planning, migration diffing, and TypeDB schema application. Other Vibe Machine products (OneApp, Lingo) embed it.
+2. **`ont`** — the CLI/TUI binary over that library. Automates ontology-repo releases (`ont release`), package/migration validation, migration diffs, and corpus inspection (local-first, not CI/CD).
+
+`bin/ontology-release` and `bin/ontology-validate-package` are stable cross-repo entrypoints (consumer ontology repos call them by path from their `package.json`); each is a thin shim that builds `ont` on first use and delegates to it.
 
 ## Commands
 
 ```bash
-# Node release tooling
-mise run check                                            # Smoke check (Node CLIs + ont --help)
-mise run test                                             # Run Node test suite (node --test)
+# Build / test / lint
+mise run build                                            # cargo build --workspace
+mise run test                                             # cargo test --workspace
+mise run lint                                             # cargo clippy --workspace -D warnings
+mise run check                                            # smoke `ont --help` paths
+
+# Release (all backed by `ont release`)
 mise run release-check -- ../ontology-repo                # Validate repo without mutation
 mise run release-dry-run -- ../ontology-repo [bump]       # Preview next release
 mise run release -- --repo ../ontology-repo --bump patch  # Execute release
 
-# Rust workspace
-mise run build                                            # cargo build --workspace
-mise run cargo-test                                       # cargo test --workspace
-mise run lint                                             # cargo clippy --workspace -D warnings
-ont --help                                                # Top-level CLI help (after build)
+# ont CLI (after build; ./target/debug on $PATH via mise.toml)
+ont --help                                                # Top-level CLI help
+ont validate-package --repo ../ontology-gist              # Package-contract validation
+ont validate-migration --repo ../ontology-gist            # Migration-contract validation
+ont diff --repo ../ontology-gist --from 1.0.0 --to 1.0.1  # Migration diff
+ont release --repo ../ontology-gist --bump patch          # Execute a release
 ont corpus list --repo ../ontology-gist                   # List corpus items
 ont corpus validate --repo ../ontology-gist               # Shape-validate a corpus
 ont tui                                                   # Launch interactive TUI
 ```
 
-npm equivalents: `npm run check`, `npm run test`.
-
 ## Architecture
 
 ```
-# Node release tooling
-bin/ontology-release              → Executable entry point
-src/cli/ontology-release.mjs      → CLI implementation (arg parsing, dispatch)
-src/lib/release-args.mjs          → Argument parsing & validation
-src/lib/versions.mjs              → Semver parsing, bumping, version resolution
-src/lib/package-release.mjs       → Release planning & execution (git ops, manifest rewrites)
-tests/release-args.test.mjs       → Tests (node:test + assert/strict)
-
-# Rust workspace
-Cargo.toml                        → Workspace root
-crates/vibe-ontology/             → Library (durable, embeddable, no CLI/TUI deps)
-crates/ont/                       → Binary (clap + ratatui, depends on vibe-ontology)
-
-# Shared
-.mise/tasks/                      → Operator entrypoints (check, test, build, lint, release, …)
-docs/                             → Architecture docs, playbooks, contracts
+Cargo.toml                                → Workspace root
+crates/vibe-ontology/                     → Library (durable, embeddable, no CLI/TUI deps)
+  src/corpus.rs                           → Corpus model & discovery
+  src/version.rs                          → Semver parsing, bumping, version resolution
+  src/package_validator.rs                → Package-contract validation
+  src/migration_contract.rs               → Migration-contract validation
+  src/migration_diff.rs                   → Migration diffing
+  src/executable_package.rs               → Executable-package preparation
+  src/bootstrap_uniqueness.rs             → Bootstrap-uniqueness validation
+  src/release_args.rs                     → Release arg validation
+  src/package_release.rs                  → Release planning + pure package.json transforms
+  src/apply.rs                            → TypeDB schema application
+crates/ont/                               → Binary (clap + ratatui, depends on vibe-ontology)
+  crates/ont/src/cli/{validate_package,validate_migration,diff,release,corpus}.rs → subcommands
+bin/ontology-{release,validate-package}   → Stable cross-repo shims → build+exec `ont`
+.mise/tasks/                              → Operator entrypoints (check, test, build, lint, release, …)
+tests/*.py                                → Live-TypeDB integration tests (pytest, cross-driver oracle)
+docs/                                     → Architecture docs, playbooks, contracts
 ```
 
 See `docs/rust-workspace.md` for the Rust crate layout and `docs/corpus-runner.md` for the `ont corpus` command surface.
@@ -57,8 +64,8 @@ See `docs/rust-workspace.md` for the Rust crate layout and `docs/corpus-runner.m
 ### Responsibility Boundaries
 
 This repo **owns**:
-- npm package release automation (Node)
-- the `vibe-ontology` library that other Vibe Machine products consume (Rust)
+- release automation for the ontology repos (the `ont release` flow)
+- the `vibe-ontology` library that other Vibe Machine products consume
 - the `ont` CLI/TUI binary
 
 This repo **does not own**: ontology-specific schema semantics, package-local generation, translation logic, or corpus content (which lives in the ontology repos themselves).
@@ -87,18 +94,19 @@ Target ontology repos must expose three npm scripts:
 
 ## Tech Stack & Conventions
 
-**Node release tooling:**
-- **Node 22** (pinned via mise.toml), ES modules, zero npm dependencies (stdlib only)
-- **Testing:** Node's native `node:test` with `assert/strict`; fixtures use temporary git repos
-- **Style:** Functional decomposition, async/await, no external linters configured
-- **Tags:** `v<semver>` format; commit messages: `Release <name> v<version>`
-
 **Rust workspace:**
 - **Rust 1.83** (pinned via mise.toml), edition 2021, `unsafe_code = "forbid"` workspace-wide
 - **Library:** `vibe-ontology` (zero CLI/TUI deps; embeddable in OneApp/Lingo)
 - **Binary:** `ont` depends on `vibe-ontology` + clap + ratatui + tokio
-- **Testing:** `cargo test --workspace`; integration tests use `assert_cmd` + `tempfile`
+- **Testing:** `cargo test --workspace`; parity tests live beside each module. The `tests/*.py` pytest suite covers live-TypeDB behavior (cross-driver oracle) and is run manually against a running server.
 - **Lints:** `cargo clippy --workspace --all-targets -- -D warnings` must pass
+- **Tags:** `v<semver>` format; release commit messages: `Release <name> v<version>`
+
+**Release flow shells npm in the *target* repos:** `ont release` invokes the
+consumer repo's `refresh:package-contract` / `validate:bootstrap` /
+`test:typedb-bootstrap` npm scripts (which are still Node and belong to those
+repos), so `node` remains pinned in `mise.toml` for release runs even though the
+tooling itself is all-Rust.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
 ## Beads Issue Tracker

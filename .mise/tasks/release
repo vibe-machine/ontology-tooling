@@ -3,4 +3,4 @@
 #USAGE arg "[args]" var=#true help="Arguments passed through to ontology-release"
 set -euo pipefail
 
-exec node src/cli/ontology-release.mjs "$@"
+exec "${MISE_PROJECT_ROOT:-.}/bin/ontology-release" "$@"

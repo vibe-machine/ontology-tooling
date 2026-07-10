@@ -6,4 +6,4 @@
 #USAGE }
 set -euo pipefail
 
-exec node src/cli/ontology-release.mjs --repo "${usage_repo?}" --bump "${usage_bump?}" --dry-run
+exec "${MISE_PROJECT_ROOT:-.}/bin/ontology-release" --repo "${usage_repo?}" --bump "${usage_bump?}" --dry-run

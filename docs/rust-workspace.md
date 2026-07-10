@@ -64,8 +64,8 @@ The workspace `Cargo.toml` sets `unsafe_code = "forbid"` and CI gates
 mise run build         # cargo build --workspace
 mise run cargo-test    # cargo test --workspace
 mise run lint          # cargo clippy --workspace --all-targets -- -D warnings
-mise run check         # smoke-tests Node CLIs + ont --help
-mise run test          # node --test (Node release tooling tests)
+mise run check         # smoke-tests `ont --help` paths
+mise run test          # cargo test --workspace
 ```
 
 `./target/debug` is on `$PATH` via `mise.toml`, so `ont` is callable from any

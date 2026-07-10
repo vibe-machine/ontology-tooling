@@ -36,11 +36,11 @@ Current shared command surface includes:
 
 ## Layout
 
-- `bin/` user-facing command entrypoints
-- `src/cli/` CLI command implementations
-- `src/lib/` reusable support code
+- `bin/` stable cross-repo shims that build + exec the `ont` binary
+- `crates/vibe-ontology/` durable, embeddable library (validation, release planning, apply)
+- `crates/ont/` the `ont` CLI/TUI binary
 - `docs/` design and architecture notes
-- `tests/` smoke and unit tests
+- `tests/` live-TypeDB integration tests (pytest)
 - `.mise/tasks/` runnable project tasks
 
 ## Wrapper Contract
