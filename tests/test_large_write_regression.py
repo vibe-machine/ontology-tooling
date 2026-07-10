@@ -76,18 +76,18 @@ def _archive_repo_at_ref(repo: Path, ref: str, destination: Path) -> None:
 
 
 def _prepare_executable_package(repo_path: Path) -> None:
-    module_path = TOOLING_ROOT / "src" / "lib" / "executable-package.mjs"
+    # Delegates to the Rust `ont` CLI (the JS release tooling was removed).
+    # The bin/ shim builds `ont` on first use if needed.
+    ont_shim = TOOLING_ROOT / "bin" / "ontology-release"
+    ont_bin = TOOLING_ROOT / "target" / "release" / "ont"
+    if not ont_bin.exists():
+        # Trigger the shim's one-time build without running a release.
+        subprocess.check_call([str(ont_shim), "--help"], cwd=TOOLING_ROOT,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     subprocess.check_call(
-        [
-            "node",
-            "--input-type=module",
-            "-e",
-            (
-                f"import {{ prepareExecutablePackage }} from {json.dumps(str(module_path))};"
-                f"await prepareExecutablePackage({json.dumps(str(repo_path))});"
-            ),
-        ],
+        [str(ont_bin), "prepare-package", "--repo", str(repo_path)],
         cwd=TOOLING_ROOT,
+        stdout=subprocess.DEVNULL,
     )
 
 

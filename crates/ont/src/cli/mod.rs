@@ -7,6 +7,7 @@ use serde::Serialize;
 mod completions;
 mod corpus;
 mod diff;
+mod prepare_package;
 mod release;
 mod validate_migration;
 mod validate_package;
@@ -48,6 +49,8 @@ pub enum Command {
     Corpus(corpus::CorpusArgs),
     /// Generate a migration diff between two package versions.
     Diff(diff::DiffArgs),
+    /// Prepare an ontology package's executable apply units (splits large writes).
+    PreparePackage(prepare_package::PreparePackageArgs),
     /// Validate or publish an ontology package release.
     Release(release::ReleaseArgs),
     /// Launch the interactive TUI.
@@ -84,6 +87,7 @@ pub async fn run(cli: Cli) -> Result<()> {
         Command::Completions { shell } => completions::run(shell),
         Command::Corpus(args) => corpus::run(&cli, &args).await,
         Command::Diff(args) => diff::run(&cli, &args),
+        Command::PreparePackage(args) => prepare_package::run(&cli, &args),
         Command::Release(args) => release::run(&cli, &args),
         Command::Tui => crate::tui::run(&cli).await,
         Command::ValidateMigration(args) => validate_migration::run(&cli, &args),
