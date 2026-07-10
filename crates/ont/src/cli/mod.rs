@@ -1,9 +1,13 @@
+use std::io::Write;
+
 use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
+use serde::Serialize;
 
 mod completions;
 mod corpus;
 mod diff;
+mod release;
 mod validate_migration;
 mod validate_package;
 mod version;
@@ -44,6 +48,8 @@ pub enum Command {
     Corpus(corpus::CorpusArgs),
     /// Generate a migration diff between two package versions.
     Diff(diff::DiffArgs),
+    /// Validate or publish an ontology package release.
+    Release(release::ReleaseArgs),
     /// Launch the interactive TUI.
     Tui,
     /// Validate an ontology package's migration contract.
@@ -78,9 +84,17 @@ pub async fn run(cli: Cli) -> Result<()> {
         Command::Completions { shell } => completions::run(shell),
         Command::Corpus(args) => corpus::run(&cli, &args).await,
         Command::Diff(args) => diff::run(&cli, &args),
+        Command::Release(args) => release::run(&cli, &args),
         Command::Tui => crate::tui::run(&cli).await,
         Command::ValidateMigration(args) => validate_migration::run(&cli, &args),
         Command::ValidatePackage(args) => validate_package::run(&cli, &args),
         Command::Version => version::run(&cli),
     }
+}
+
+pub(crate) fn emit_json<T: Serialize>(value: &T) -> Result<()> {
+    let mut stdout = std::io::stdout().lock();
+    serde_json::to_writer_pretty(&mut stdout, value)?;
+    writeln!(stdout)?;
+    Ok(())
 }

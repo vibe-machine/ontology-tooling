@@ -5,7 +5,7 @@ use clap::Args;
 use serde::Serialize;
 use vibe_ontology::migration_diff::generate_migration_diff;
 
-use super::{Cli, Format};
+use super::{emit_json, Cli, Format};
 
 #[derive(Args, Debug, Clone)]
 pub struct DiffArgs {
@@ -55,14 +55,6 @@ pub fn run(cli: &Cli, args: &DiffArgs) -> Result<()> {
         Format::Json => emit_json(&report)?,
         Format::Text => emit_text(&report),
     }
-    Ok(())
-}
-
-fn emit_json<T: Serialize>(value: &T) -> Result<()> {
-    use std::io::Write;
-    let mut stdout = std::io::stdout().lock();
-    serde_json::to_writer_pretty(&mut stdout, value)?;
-    writeln!(stdout)?;
     Ok(())
 }
 

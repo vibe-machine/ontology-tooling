@@ -2,10 +2,13 @@
 
 use std::collections::HashSet;
 
+use serde::Serialize;
 use serde_json::{Map, Value};
 
 use crate::error::{Error, Result};
 use crate::version::{resolve_release_version, BumpKind};
+
+const OPTIONAL_RELEASE_SCRIPTS: [&str; 1] = ["test:typedb-migration"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReleasePlan {
@@ -16,10 +19,152 @@ pub struct ReleasePlan {
     pub resume_existing_version: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Rename {
     pub from: String,
     pub to: String,
+}
+
+/// Removes top-level migration metadata from a cloned package value.
+pub fn strip_migration_metadata(package_json: &Value) -> Value {
+    let mut next_package_json = package_json.clone();
+    if let Some(package) = next_package_json.as_object_mut() {
+        package.remove("migration");
+    }
+    next_package_json
+}
+
+/// Rewrites generated compatible migration write-unit paths to the actual diff path.
+pub fn rewrite_compatible_migration_unit_paths(
+    package_json: &Value,
+    migration_path: &str,
+    next_version: &str,
+) -> Value {
+    if migration_path.is_empty() {
+        return package_json.clone();
+    }
+    let mut next_package_json = package_json.clone();
+    let Some(plans) = next_package_json
+        .pointer_mut("/migration/plans")
+        .and_then(Value::as_array_mut)
+    else {
+        return package_json.clone();
+    };
+
+    let mut changed = false;
+    for plan in plans {
+        if plan.get("mode").and_then(Value::as_str) != Some("compatible")
+            || plan.get("to").and_then(Value::as_str) != Some(next_version)
+        {
+            continue;
+        }
+        let Some(phases) = plan.get_mut("phases").and_then(Value::as_array_mut) else {
+            continue;
+        };
+        for phase in phases {
+            let Some(units) = phase.get_mut("units").and_then(Value::as_array_mut) else {
+                continue;
+            };
+            for unit in units {
+                if unit.get("kind").and_then(Value::as_str) != Some("write") {
+                    continue;
+                }
+                let Some(path) = unit.get("path").and_then(Value::as_str) else {
+                    continue;
+                };
+                if path == migration_path || !is_generated_migration_path(path) {
+                    continue;
+                }
+                unit["path"] = Value::String(migration_path.to_string());
+                changed = true;
+            }
+        }
+    }
+
+    if changed {
+        next_package_json
+    } else {
+        package_json.clone()
+    }
+}
+
+fn is_generated_migration_path(path: &str) -> bool {
+    if path.contains(['\n', '\r']) {
+        return false;
+    }
+    let Some(body) = path
+        .strip_prefix("migrations/v")
+        .and_then(|path| path.strip_suffix(".tql"))
+    else {
+        return false;
+    };
+    body.split_once("-to-v")
+        .is_some_and(|(from, to)| !from.is_empty() && !to.is_empty())
+}
+
+/// Returns the required and package-supported optional release scripts.
+pub fn release_scripts_to_run(package_json: &Value) -> Vec<String> {
+    let mut scripts = vec![
+        "refresh:package-contract".to_string(),
+        "validate:bootstrap".to_string(),
+        "test:typedb-bootstrap".to_string(),
+    ];
+    let has_migration = package_json
+        .pointer("/migration/plans")
+        .and_then(Value::as_array)
+        .is_some_and(|plans| !plans.is_empty());
+    let has_migration_script = package_json
+        .pointer("/scripts/test:typedb-migration")
+        .and_then(Value::as_str)
+        .is_some_and(|script| !script.trim().is_empty());
+    if has_migration && has_migration_script {
+        scripts.extend(OPTIONAL_RELEASE_SCRIPTS.iter().map(ToString::to_string));
+    }
+    scripts
+}
+
+/// Resolves the module repository URL used by generated migration assertions.
+pub fn resolve_module_repo_url(package_json: &Value) -> Option<String> {
+    package_json
+        .pointer("/source/repoUrl")
+        .and_then(Value::as_str)
+        .or_else(|| package_json.get("source").and_then(Value::as_str))
+        .or_else(|| {
+            package_json
+                .pointer("/upstream/repoUrl")
+                .and_then(Value::as_str)
+        })
+        .or_else(|| {
+            package_json
+                .pointer("/upstream/repo")
+                .and_then(Value::as_str)
+        })
+        .map(ToOwned::to_owned)
+}
+
+pub fn expected_release_commit_message(name: &str, version: &str) -> String {
+    format!("Release {name} v{version}")
+}
+
+pub fn migration_preflight_assertion(
+    module_repo_url: &str,
+    current_version: &str,
+    _next_version: &str,
+) -> String {
+    format!(
+        "match\n  $module isa OntologyModule,\n    has moduleRepoUrl \"{module_repo_url}\";\n  $version isa OntologyModuleVersion,\n    has moduleVersion \"{current_version}\";\n  (version: $version, module: $module) isa ontologyModuleVersionOf;\nlimit 1;\n"
+    )
+}
+
+pub fn migration_verify_assertion(
+    module_repo_url: &str,
+    _current_version: &str,
+    next_version: &str,
+) -> String {
+    format!(
+        "match\n  $module isa OntologyModule,\n    has moduleRepoUrl \"{module_repo_url}\";\n  $version isa OntologyModuleVersion,\n    has moduleVersion \"{next_version}\";\n  (version: $version, module: $module) isa ontologyModuleVersionOf;\nlimit 1;\n"
+    )
 }
 
 fn release_error(message: impl Into<String>) -> Error {
@@ -350,6 +495,131 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn strip_migration_metadata_removes_only_the_top_level_migration_key() {
+        let package = json!({
+            "name": "example",
+            "migration": {"plans": []},
+            "nested": {"migration": "preserved"},
+        });
+
+        assert_eq!(
+            strip_migration_metadata(&package),
+            json!({"name": "example", "nested": {"migration": "preserved"}})
+        );
+        assert!(package.get("migration").is_some());
+    }
+
+    #[test]
+    fn rewrite_compatible_migration_unit_paths_rewrites_only_matching_units() {
+        let package = json!({
+            "migration": {"plans": [
+                {
+                    "mode": "compatible",
+                    "to": "1.1.0",
+                    "phases": [{"units": [
+                        {"kind": "write", "path": "migrations/v1.0.0-to-v1.1.0.tql"},
+                        {"kind": "assert-data", "path": "migrations/v1.0.0-to-v1.1.0.tql"},
+                        {"kind": "write", "path": "schema/not-generated.tql"}
+                    ]}]
+                },
+                {
+                    "mode": "replace",
+                    "to": "1.1.0",
+                    "phases": [{"units": [
+                        {"kind": "write", "path": "migrations/v1.0.0-to-v1.1.0.tql"}
+                    ]}]
+                }
+            ]}
+        });
+
+        let rewritten = rewrite_compatible_migration_unit_paths(
+            &package,
+            "migrations/v1.0.1-to-v1.1.0.tql",
+            "1.1.0",
+        );
+        assert_eq!(
+            rewritten.pointer("/migration/plans/0/phases/0/units/0/path"),
+            Some(&json!("migrations/v1.0.1-to-v1.1.0.tql"))
+        );
+        assert_eq!(
+            rewritten.pointer("/migration/plans/0/phases/0/units/1/path"),
+            package.pointer("/migration/plans/0/phases/0/units/1/path")
+        );
+        assert_eq!(
+            rewritten.pointer("/migration/plans/1/phases/0/units/0/path"),
+            package.pointer("/migration/plans/1/phases/0/units/0/path")
+        );
+    }
+
+    #[test]
+    fn release_scripts_to_run_includes_supported_migration_validation() {
+        let scripts = release_scripts_to_run(&json!({
+            "migration": {"plans": [{}]},
+            "scripts": {"test:typedb-migration": "  node validate.mjs  "},
+        }));
+
+        assert_eq!(
+            scripts,
+            vec![
+                "refresh:package-contract",
+                "validate:bootstrap",
+                "test:typedb-bootstrap",
+                "test:typedb-migration",
+            ]
+        );
+        assert_eq!(
+            release_scripts_to_run(&json!({
+                "migration": {"plans": []},
+                "scripts": {"test:typedb-migration": "node validate.mjs"},
+            }))
+            .len(),
+            3
+        );
+    }
+
+    #[test]
+    fn resolve_module_repo_url_uses_js_nullish_priority() {
+        assert_eq!(
+            resolve_module_repo_url(&json!({
+                "source": {"repoUrl": "https://example.test/source"},
+                "upstream": {"repoUrl": "https://example.test/upstream"},
+            })),
+            Some("https://example.test/source".to_string())
+        );
+        assert_eq!(
+            resolve_module_repo_url(&json!({
+                "source": "https://example.test/string-source",
+                "upstream": {"repo": "https://example.test/repo"},
+            })),
+            Some("https://example.test/string-source".to_string())
+        );
+    }
+
+    #[test]
+    fn expected_release_commit_message_matches_node_release_tool() {
+        assert_eq!(
+            expected_release_commit_message("ontology-gist", "1.2.3"),
+            "Release ontology-gist v1.2.3"
+        );
+    }
+
+    #[test]
+    fn migration_preflight_assertion_matches_node_template() {
+        assert_eq!(
+            migration_preflight_assertion("https://example.test/module", "1.0.0", "1.1.0"),
+            "match\n  $module isa OntologyModule,\n    has moduleRepoUrl \"https://example.test/module\";\n  $version isa OntologyModuleVersion,\n    has moduleVersion \"1.0.0\";\n  (version: $version, module: $module) isa ontologyModuleVersionOf;\nlimit 1;\n"
+        );
+    }
+
+    #[test]
+    fn migration_verify_assertion_matches_node_template() {
+        assert_eq!(
+            migration_verify_assertion("https://example.test/module", "1.0.0", "1.1.0"),
+            "match\n  $module isa OntologyModule,\n    has moduleRepoUrl \"https://example.test/module\";\n  $version isa OntologyModuleVersion,\n    has moduleVersion \"1.1.0\";\n  (version: $version, module: $module) isa ontologyModuleVersionOf;\nlimit 1;\n"
+        );
+    }
 
     #[test]
     fn plan_package_release_rewrites_versioned_manifest_references() {

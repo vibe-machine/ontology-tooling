@@ -5,7 +5,7 @@ use clap::Args;
 use serde::Serialize;
 use vibe_ontology::package_validator::validate_package_contract;
 
-use super::{Cli, Format};
+use super::{emit_json, Cli, Format};
 
 #[derive(Args, Debug, Clone)]
 pub struct ValidatePackageArgs {
@@ -48,14 +48,6 @@ pub fn run(cli: &Cli, args: &ValidatePackageArgs) -> Result<()> {
         Format::Json => emit_json(&report)?,
         Format::Text => emit_text(&report),
     }
-    Ok(())
-}
-
-fn emit_json<T: Serialize>(value: &T) -> Result<()> {
-    use std::io::Write;
-    let mut stdout = std::io::stdout().lock();
-    serde_json::to_writer_pretty(&mut stdout, value)?;
-    writeln!(stdout)?;
     Ok(())
 }
 

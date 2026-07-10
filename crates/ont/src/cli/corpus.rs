@@ -5,7 +5,7 @@ use clap::{Args, Subcommand};
 use serde::Serialize;
 use vibe_ontology::corpus::{discover_corpus, Corpus, CorpusItem, ItemCategory, ItemFilter};
 
-use super::{Cli, Format};
+use super::{emit_json, Cli, Format};
 
 #[derive(Args, Debug, Clone)]
 pub struct CorpusArgs {
@@ -173,14 +173,6 @@ fn item_summary(item: &CorpusItem) -> ItemSummary<'_> {
         prompt_export: &item.prompt_export,
         source: &item.source,
     }
-}
-
-fn emit_json<T: Serialize>(value: &T) -> Result<()> {
-    use std::io::Write;
-    let mut stdout = std::io::stdout().lock();
-    serde_json::to_writer_pretty(&mut stdout, value)?;
-    writeln!(stdout)?;
-    Ok(())
 }
 
 fn emit_list_text(report: &ListReport<'_>) {
