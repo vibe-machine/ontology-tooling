@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+#MISE description="Build the ont release binary and link it into bin/ont"
+set -euo pipefail
+
+ROOT_DIR="${MISE_PROJECT_ROOT:-$PWD}"
+cargo build --release -p ont
+
+# Expose the freshly built binary at bin/ont (a relative symlink into target/,
+# gitignored). This keeps `ont` discoverable right next to its shims and always
+# current — a symlink never goes stale; if target/ is wiped it simply dangles,
+# which correctly signals "rebuild me".
+ln -sfn ../target/release/ont "$ROOT_DIR/bin/ont"
+echo "linked bin/ont -> target/release/ont"

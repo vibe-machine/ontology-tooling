@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Bootstrap a fresh checkout: build the ont release binary + link bin/ont"
+#MISE depends=["build-ont"]
+set -euo pipefail
+
+echo "setup ok — ont is built and linked at bin/ont"

@@ -15,3 +15,6 @@ target/
 .dolt/
 *.db
 .beads-credential-key
+
+# ont release binary symlinked into bin/ by `mise run build-ont`
+/bin/ont
