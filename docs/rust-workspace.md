@@ -1,9 +1,10 @@
 # Rust Workspace
 
-`ontology-tooling` is a hybrid repo. The historical Node CLIs (`ontology-release`,
-`ontology-validate-package`) own npm package release orchestration, and stay.
-The Rust workspace at the repo root owns the durable runtime: corpus model,
-ontology operations, and the unified CLI/TUI.
+`ontology-tooling` is a single Rust workspace (the historical Node CLIs have been
+fully ported and removed). The `vibe-ontology` library owns the durable runtime —
+corpus model, schema/migration validation, package-release planning, and TypeDB
+schema application — and the `ont` binary is the unified CLI/TUI over it, including
+release orchestration (`ont release`).
 
 ## Layout
 

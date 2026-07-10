@@ -9,9 +9,10 @@ The repo is a single Rust workspace (`Cargo.toml`, `crates/vibe-ontology/`,
 `crates/ont/`). `vibe-ontology` is the durable library other Vibe Machine
 products embed; `ont` is the unified CLI/TUI over it, which owns release
 orchestration for the ontology repos (`ont release`). The former Node release
-tooling has been fully consolidated into this workspace; `bin/ontology-release`
-and `bin/ontology-validate-package` remain as stable cross-repo shims that build
-and exec `ont`. See `docs/rust-workspace.md`, `docs/corpus-runner.md`,
+tooling has been fully consolidated into this workspace; consumer repos invoke
+the CLI directly by path as `../ontology-tooling/bin/ont <subcommand>` (`bin/ont`
+is a gitignored symlink to the built `target/release/ont`). See
+`docs/rust-workspace.md`, `docs/corpus-runner.md`,
 `docs/repo-wrapper-pattern.md`, and `docs/local-release-playbook.md`.
 
 The two surfaces are independent. The Node tooling does not depend on the
@@ -48,8 +49,8 @@ This repo should not own:
 
 The foundational production commands are:
 
-- `ontology-validate-package` for authoritative package-contract validation
-- `ontology-release` for release orchestration on top of that validation
+- `ont validate-package` for authoritative package-contract validation
+- `ont release` for release orchestration on top of that validation
 
 Target contract:
 

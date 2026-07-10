@@ -18,7 +18,7 @@ mise run release-check -- ../ontology-trace-to-knowledge
 mise run release-dry-run -- ../ontology-trace-to-knowledge patch
 mise run release -- --repo ../ontology-gist --version 1.0.3
 mise run release -- --help
-./bin/ontology-validate-package --repo ../ontology-gist
+./bin/ont validate-package --repo ../ontology-gist
 ```
 
 ## Current Scope
@@ -28,7 +28,7 @@ The current command surface is:
 Current shared command surface includes:
 
 - `mise` runtime/tool pinning
-- `ontology-validate-package` for authoritative package-contract validation
+- `ont validate-package` for authoritative package-contract validation
 - shared repo layout for CLI development
 - task entrypoints under `.mise/tasks`
 - a release command that performs shared release orchestration for ontology repos
@@ -57,4 +57,4 @@ See [docs/local-release-playbook.md](docs/local-release-playbook.md).
 
 ## Status
 
-`ontology-validate-package` owns authoritative package-contract checks, and `ontology-release` builds on top of that validator for shared version/refresh/validation/commit/tag flow. `mise` remains the primary operator interface.
+`ont validate-package` owns authoritative package-contract checks, and `ont release` builds on top of that validator for shared version/refresh/validation/commit/tag flow. `mise` remains the primary operator interface.

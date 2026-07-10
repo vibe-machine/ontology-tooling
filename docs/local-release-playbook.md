@@ -55,7 +55,7 @@ The target repo must expose these scripts in `package.json`:
 - `validate:bootstrap`
 - `test:typedb-bootstrap`
 
-`ontology-release` will:
+`ont release` will:
 
 1. verify the target repo is clean
 2. compute the next version

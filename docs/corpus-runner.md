@@ -153,5 +153,5 @@ This crate does **not** own:
 - corpus content (lives in ontology repos, e.g. `ontology-gist/corpus/`)
 - TypeDB query execution (deferred to follow-up beads)
 - prompt template construction (Lingo / `one-537.13`)
-- release orchestration (handled by `ont release`, invoked via the
-  `bin/ontology-release` shim)
+- release orchestration (handled by `ont release`, invoked as
+  `bin/ont release`)

@@ -27,13 +27,15 @@ Each ontology repo should expose these stable scripts:
     "refresh:package-contract": "node tools/package_contract/refresh_package_contract.mjs",
     "validate:bootstrap": "node tools/package_contract/validate_bootstrap.mjs",
     "test:typedb-bootstrap": "node tools/package_contract/validate_typedb_bootstrap.mjs",
-    "release": "../ontology-tooling/bin/ontology-release --repo .",
-    "release:check": "../ontology-tooling/bin/ontology-release --repo . --validate-only"
+    "release": "../ontology-tooling/bin/ont release --repo .",
+    "release:check": "../ontology-tooling/bin/ont release --repo . --validate-only"
   }
 }
 ```
 
-If a repo cannot support `refresh:package-contract` yet, it is not ready for the shared `ontology-release` flow.
+`bin/ont` is built by `mise run setup` (or `mise run build-ont`) in ontology-tooling;
+build it there before the first release. If a repo cannot support
+`refresh:package-contract` yet, it is not ready for the shared `ont release` flow.
 
 ## Boundary Rule
 

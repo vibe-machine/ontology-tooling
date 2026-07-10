@@ -38,5 +38,5 @@ The reusable script boundary for ontology repos is:
 - `validate:bootstrap`
 - `test:typedb-bootstrap`
 
-The first extraction target is now complete in `ontology-release`, which uses this stable script contract instead of embedding ontology-specific generation logic.
+The first extraction target is now complete in `ont release`, which uses this stable script contract instead of embedding ontology-specific generation logic.
 

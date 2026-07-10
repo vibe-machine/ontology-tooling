@@ -9,7 +9,7 @@ ontology-tooling is the shared tooling hub for the `collection-vibe-machine` pro
 1. **`vibe-ontology`** — the durable, embeddable library: corpus model, schema/migration-contract validation, package-release planning, migration diffing, and TypeDB schema application. Other Vibe Machine products (OneApp, Lingo) embed it.
 2. **`ont`** — the CLI/TUI binary over that library. Automates ontology-repo releases (`ont release`), package/migration validation, migration diffs, and corpus inspection (local-first, not CI/CD).
 
-`bin/ontology-release` and `bin/ontology-validate-package` are stable cross-repo entrypoints (consumer ontology repos call them by path from their `package.json`); each is a thin shim that `exec`s `bin/ont`. `bin/ont` is a gitignored symlink to the built `target/release/ont`, created by `mise run build-ont` (also run by `mise run build` and `mise run setup`) — so `ont` is discoverable in `bin/` and nothing compiles unexpectedly inside a consumer's `npm run`.
+`bin/ont` is the single entrypoint: a gitignored symlink to the built `target/release/ont`, created by `mise run build-ont` (also run by `mise run build` and `mise run setup`). Consumer ontology repos call it by path from their `package.json` (e.g. `"release": "../ontology-tooling/bin/ont release --repo ."`). There are no per-command bash shims — `bin/ont <subcommand>` is called directly. A consumer's first release therefore requires the tooling to have been built (`mise run setup`).
 
 ## Commands
 
@@ -53,8 +53,7 @@ crates/vibe-ontology/                     → Library (durable, embeddable, no C
   src/apply.rs                            → TypeDB schema application
 crates/ont/                               → Binary (clap + ratatui, depends on vibe-ontology)
   crates/ont/src/cli/{validate_package,validate_migration,diff,release,corpus}.rs → subcommands
-bin/ont                                   → gitignored symlink → target/release/ont (via `mise run build-ont`)
-bin/ontology-{release,validate-package}   → Stable cross-repo shims → exec `bin/ont`
+bin/ont                                   → single entrypoint: gitignored symlink → target/release/ont (via `mise run build-ont`); consumers call `bin/ont <subcommand>` directly
 .mise/tasks/                              → Operator entrypoints (check, test, build, lint, release, …)
 crates/vibe-ontology/tests/{schema_apply,bootstrap_apply}.rs → live-TypeDB integration tests (spin a fresh server via TYPEDB_BIN)
 docs/                                     → Architecture docs, playbooks, contracts
