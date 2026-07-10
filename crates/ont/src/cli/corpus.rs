@@ -3,9 +3,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
 use serde::Serialize;
-use vibe_ontology::corpus::{
-    discover_corpus, Corpus, CorpusItem, ItemCategory, ItemFilter,
-};
+use vibe_ontology::corpus::{discover_corpus, Corpus, CorpusItem, ItemCategory, ItemFilter};
 
 use super::{Cli, Format};
 
@@ -39,9 +37,7 @@ pub enum CorpusCommand {
 
 pub async fn run(cli: &Cli, args: &CorpusArgs) -> Result<()> {
     match &args.command {
-        CorpusCommand::List { repo, tag, item } => {
-            list(cli, repo, tag.as_deref(), item.as_deref())
-        }
+        CorpusCommand::List { repo, tag, item } => list(cli, repo, tag.as_deref(), item.as_deref()),
         CorpusCommand::Validate { repo } => validate(cli, repo),
     }
 }
@@ -108,16 +104,15 @@ fn summarize_manifest(corpus: &Corpus) -> ManifestSummary {
 
 fn list(cli: &Cli, repo: &Path, tag: Option<&str>, item_id: Option<&str>) -> Result<()> {
     tracing::info!(repo = %repo.display(), "discovering corpus");
-    let corpus = discover_corpus(repo)
-        .with_context(|| format!("discover corpus at {}", repo.display()))?;
+    let corpus =
+        discover_corpus(repo).with_context(|| format!("discover corpus at {}", repo.display()))?;
 
     let filter = ItemFilter {
         tag: tag.map(|s| s.to_string()),
         item_id: item_id.map(|s| s.to_string()),
         category: None,
     };
-    let matched: Vec<&CorpusItem> =
-        corpus.items.iter().filter(|i| filter.matches(i)).collect();
+    let matched: Vec<&CorpusItem> = corpus.items.iter().filter(|i| filter.matches(i)).collect();
 
     let report = ListReport {
         command: "corpus.list",
@@ -138,8 +133,8 @@ fn list(cli: &Cli, repo: &Path, tag: Option<&str>, item_id: Option<&str>) -> Res
 
 fn validate(cli: &Cli, repo: &Path) -> Result<()> {
     tracing::info!(repo = %repo.display(), "validating corpus shape");
-    let corpus = discover_corpus(repo)
-        .with_context(|| format!("validate corpus at {}", repo.display()))?;
+    let corpus =
+        discover_corpus(repo).with_context(|| format!("validate corpus at {}", repo.display()))?;
 
     let known_good = corpus
         .items

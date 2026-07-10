@@ -3,6 +3,9 @@ use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 
 mod completions;
 mod corpus;
+mod diff;
+mod validate_migration;
+mod validate_package;
 mod version;
 
 /// Top-level CLI definition for `ont`.
@@ -32,17 +35,23 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum Command {
-    /// Launch the interactive TUI.
-    Tui,
-    /// Manage executable ontology corpora.
-    Corpus(corpus::CorpusArgs),
-    /// Print version information.
-    Version,
     /// Generate shell completions for the supplied shell.
     Completions {
         #[arg(value_enum)]
         shell: clap_complete::Shell,
     },
+    /// Manage executable ontology corpora.
+    Corpus(corpus::CorpusArgs),
+    /// Generate a migration diff between two package versions.
+    Diff(diff::DiffArgs),
+    /// Launch the interactive TUI.
+    Tui,
+    /// Validate an ontology package's migration contract.
+    ValidateMigration(validate_migration::ValidateMigrationArgs),
+    /// Validate an ontology package contract.
+    ValidatePackage(validate_package::ValidatePackageArgs),
+    /// Print version information.
+    Version,
 }
 
 #[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,9 +75,12 @@ pub async fn run(cli: Cli) -> Result<()> {
     };
 
     match command {
-        Command::Tui => crate::tui::run(&cli).await,
-        Command::Corpus(args) => corpus::run(&cli, &args).await,
-        Command::Version => version::run(&cli),
         Command::Completions { shell } => completions::run(shell),
+        Command::Corpus(args) => corpus::run(&cli, &args).await,
+        Command::Diff(args) => diff::run(&cli, &args),
+        Command::Tui => crate::tui::run(&cli).await,
+        Command::ValidateMigration(args) => validate_migration::run(&cli, &args),
+        Command::ValidatePackage(args) => validate_package::run(&cli, &args),
+        Command::Version => version::run(&cli),
     }
 }

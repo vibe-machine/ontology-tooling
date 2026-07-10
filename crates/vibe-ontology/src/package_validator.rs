@@ -20,9 +20,10 @@ fn invalid<S: Into<String>>(message: S) -> Error {
     Error::Version(message.into())
 }
 
-/// Validates the package contract rooted at `repo_path`, returning the first
-/// violation in the same order as the JavaScript `validatePackageContract`.
-pub fn validate_package_contract(repo_path: &Path) -> Result<()> {
+/// Validates the package contract rooted at `repo_path`, returning the parsed
+/// package JSON or the first violation in the same order as the JavaScript
+/// `validatePackageContract`.
+pub fn validate_package_contract(repo_path: &Path) -> Result<Value> {
     let package_path = repo_path.join("package.json");
     let text = std::fs::read_to_string(&package_path).map_err(|error| {
         invalid(format!(
@@ -85,7 +86,7 @@ pub fn validate_package_contract(repo_path: &Path) -> Result<()> {
     validate_previous_release_coverage(repo_path, &package)?;
     validate_executable_package(repo_path, &package)?;
 
-    Ok(())
+    Ok(package)
 }
 
 fn is_non_empty_string(value: Option<&Value>) -> bool {
@@ -505,8 +506,10 @@ mod tests {
 
     #[test]
     fn accepts_a_valid_self_describing_package() {
-        let dir = create_fixture(&base_package(), &[]);
-        validate_package_contract(dir.path()).unwrap();
+        let package = base_package();
+        let dir = create_fixture(&package, &[]);
+        let validated = validate_package_contract(dir.path()).unwrap();
+        assert_eq!(validated, package);
     }
 
     #[test]

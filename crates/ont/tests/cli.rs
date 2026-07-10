@@ -66,7 +66,10 @@ fn build_repo() -> TempDir {
         "insert $m isa Meeting; $d isa Decision;\n",
     );
     write(&corpus.join("queries/meeting-decisions.json"), KNOWN_GOOD);
-    write(&corpus.join("negative/missing-relation-roles.json"), NEGATIVE);
+    write(
+        &corpus.join("negative/missing-relation-roles.json"),
+        NEGATIVE,
+    );
     dir
 }
 
@@ -160,7 +163,10 @@ fn completions_bash_writes_to_stdout() {
         .assert()
         .success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
-    assert!(stdout.contains("_ont"), "expected completion script for ont, got: {stdout}");
+    assert!(
+        stdout.contains("_ont"),
+        "expected completion script for ont, got: {stdout}"
+    );
 }
 
 #[test]
@@ -183,6 +189,9 @@ fn help_includes_all_subcommands() {
         .success()
         .stdout(contains("tui"))
         .stdout(contains("corpus"))
+        .stdout(contains("diff"))
+        .stdout(contains("validate-migration"))
+        .stdout(contains("validate-package"))
         .stdout(contains("version"))
         .stdout(contains("completions"));
 }
