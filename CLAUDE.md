@@ -55,7 +55,7 @@ crates/ont/                               → Binary (clap + ratatui, depends on
   crates/ont/src/cli/{validate_package,validate_migration,diff,release,corpus}.rs → subcommands
 bin/ontology-{release,validate-package}   → Stable cross-repo shims → build+exec `ont`
 .mise/tasks/                              → Operator entrypoints (check, test, build, lint, release, …)
-tests/*.py                                → Live-TypeDB integration tests (pytest, cross-driver oracle)
+crates/vibe-ontology/tests/{schema_apply,bootstrap_apply}.rs → live-TypeDB integration tests (spin a fresh server via TYPEDB_BIN)
 docs/                                     → Architecture docs, playbooks, contracts
 ```
 
@@ -98,7 +98,7 @@ Target ontology repos must expose three npm scripts:
 - **Rust 1.83** (pinned via mise.toml), edition 2021, `unsafe_code = "forbid"` workspace-wide
 - **Library:** `vibe-ontology` (zero CLI/TUI deps; embeddable in OneApp/Lingo)
 - **Binary:** `ont` depends on `vibe-ontology` + clap + ratatui + tokio
-- **Testing:** `cargo test --workspace`; parity tests live beside each module. The `tests/*.py` pytest suite covers live-TypeDB behavior (cross-driver oracle) and is run manually against a running server.
+- **Testing:** `cargo test --workspace`; parity tests live beside each module. Live-TypeDB integration tests (`crates/vibe-ontology/tests/schema_apply.rs`, `bootstrap_apply.rs`) spin a fresh `typedb server` via `TYPEDB_BIN` and fail loudly if no binary is found (they must not silently skip). `mise.toml` sets `TYPEDB_BIN`, so `mise run test` runs them.
 - **Lints:** `cargo clippy --workspace --all-targets -- -D warnings` must pass
 - **Tags:** `v<semver>` format; release commit messages: `Release <name> v<version>`
 

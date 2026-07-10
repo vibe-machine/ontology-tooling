@@ -154,6 +154,44 @@ pub async fn apply_schema_migration(
     apply_schema(target, database, &[migration_tql]).await
 }
 
+/// Applies a data (`insert`/`put`/`delete`/`update`) TQL blob to `database` as a
+/// single **write** transaction, committed at the end. Unlike schema blobs, a
+/// data blob is submitted as one query (put/insert statements are self-contained
+/// and validated per-statement), so no top-level splitting is performed.
+pub async fn apply_write(target: &TypeDbTarget, database: &str, data_tql: &str) -> Result<()> {
+    let driver = connect(target).await?;
+    let transaction = driver
+        .transaction(database, TransactionType::Write)
+        .await
+        .map_err(typedb_err)?;
+    transaction.query(data_tql).await.map_err(typedb_err)?;
+    transaction.commit().await.map_err(typedb_err)?;
+    Ok(())
+}
+
+/// Deletes `database` if it exists (no-op otherwise). Used to reproduce the
+/// "Delete All Types → re-apply" bootstrap flow.
+pub async fn delete_database(target: &TypeDbTarget, database: &str) -> Result<()> {
+    let driver = connect(target).await?;
+    if !driver
+        .databases()
+        .contains(database)
+        .await
+        .map_err(typedb_err)?
+    {
+        return Ok(());
+    }
+    driver
+        .databases()
+        .get(database)
+        .await
+        .map_err(typedb_err)?
+        .delete()
+        .await
+        .map_err(typedb_err)?;
+    Ok(())
+}
+
 fn typedb_err<E: std::fmt::Display>(error: E) -> Error {
     Error::TypeDb(error.to_string())
 }
