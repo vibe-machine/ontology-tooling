@@ -1,0 +1,8 @@
+# Pin the repo toolchain so every entry point resolves an edition-2024-capable
+# rustc regardless of the machine's rustup default (which may be older).
+# This is respected by the rustup proxy (`~/.cargo/bin/cargo`), so the
+# self-bootstrapping bin/ontology-* shims and mise tasks all build with it.
+# The dependency tree requires edition 2024 (rust >= 1.85, e.g. clap_lex 1.1.0).
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]

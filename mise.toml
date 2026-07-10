@@ -1,7 +1,10 @@
 [tools]
 node = "22"
-rust = "1.83"
+# Rust toolchain is pinned by rust-toolchain.toml (channel = "stable") so the
+# rustup proxy resolves the same edition-2024-capable toolchain for mise tasks
+# AND the bin/ontology-* shims. Do not re-pin an older rust here — it would
+# shadow rust-toolchain.toml in mise shells and reintroduce the 1.83 skew.
 
 [env]
 TYPEDB_BIN = "/opt/homebrew/bin/typedb"
-_.path = ["./bin", "./target/debug", "./target/release"]
+_.path = ["./bin", "./target/debug", "./target/release", "{{env.HOME}}/.cargo/bin"]
