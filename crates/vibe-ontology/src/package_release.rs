@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 
 use serde::Serialize;
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 
 use crate::error::{Error, Result};
 use crate::version::{resolve_release_version, BumpKind};
@@ -62,7 +62,8 @@ pub fn rewrite_compatible_migration_unit_paths(
         let Some(phases) = plan.get_mut("phases").and_then(Value::as_array_mut) else {
             continue;
         };
-        for phase in phases {
+        let mut references_migration = false;
+        for phase in phases.iter_mut() {
             let Some(units) = phase.get_mut("units").and_then(Value::as_array_mut) else {
                 continue;
             };
@@ -73,12 +74,35 @@ pub fn rewrite_compatible_migration_unit_paths(
                 let Some(path) = unit.get("path").and_then(Value::as_str) else {
                     continue;
                 };
-                if path == migration_path || !is_generated_migration_path(path) {
+                if path == migration_path {
+                    references_migration = true;
                     continue;
                 }
-                unit["path"] = Value::String(migration_path.to_string());
-                changed = true;
+                if generated_migration_target(path) == Some(next_version) {
+                    unit["path"] = Value::String(migration_path.to_string());
+                    references_migration = true;
+                    changed = true;
+                }
             }
+        }
+        if references_migration {
+            continue;
+        }
+        let phase_index = phases
+            .iter()
+            .position(|phase| {
+                matches!(
+                    phase.get("id").and_then(Value::as_str),
+                    Some("upgrade" | "migrate")
+                )
+            })
+            .or_else(|| (!phases.is_empty()).then_some(phases.len() - 1));
+        if let Some(units) = phase_index
+            .and_then(|index| phases[index].get_mut("units"))
+            .and_then(Value::as_array_mut)
+        {
+            units.push(json!({"kind": "write", "path": migration_path}));
+            changed = true;
         }
     }
 
@@ -89,18 +113,15 @@ pub fn rewrite_compatible_migration_unit_paths(
     }
 }
 
-fn is_generated_migration_path(path: &str) -> bool {
+fn generated_migration_target(path: &str) -> Option<&str> {
     if path.contains(['\n', '\r']) {
-        return false;
+        return None;
     }
-    let Some(body) = path
+    let body = path
         .strip_prefix("migrations/v")
-        .and_then(|path| path.strip_suffix(".tql"))
-    else {
-        return false;
-    };
+        .and_then(|path| path.strip_suffix(".tql"))?;
     body.split_once("-to-v")
-        .is_some_and(|(from, to)| !from.is_empty() && !to.is_empty())
+        .and_then(|(from, to)| (!from.is_empty() && !to.is_empty()).then_some(to))
 }
 
 /// Returns the required and package-supported optional release scripts.
@@ -518,7 +539,8 @@ mod tests {
                 {
                     "mode": "compatible",
                     "to": "1.1.0",
-                    "phases": [{"units": [
+                    "phases": [{"id": "upgrade", "units": [
+                        {"kind": "write", "path": "migrations/v0.9.0-to-v1.0.0.tql"},
                         {"kind": "write", "path": "migrations/v1.0.0-to-v1.1.0.tql"},
                         {"kind": "assert-data", "path": "migrations/v1.0.0-to-v1.1.0.tql"},
                         {"kind": "write", "path": "schema/not-generated.tql"}
@@ -541,15 +563,49 @@ mod tests {
         );
         assert_eq!(
             rewritten.pointer("/migration/plans/0/phases/0/units/0/path"),
-            Some(&json!("migrations/v1.0.1-to-v1.1.0.tql"))
+            Some(&json!("migrations/v0.9.0-to-v1.0.0.tql"))
         );
         assert_eq!(
             rewritten.pointer("/migration/plans/0/phases/0/units/1/path"),
-            package.pointer("/migration/plans/0/phases/0/units/1/path")
+            Some(&json!("migrations/v1.0.1-to-v1.1.0.tql"))
+        );
+        assert_eq!(
+            rewritten.pointer("/migration/plans/0/phases/0/units/2/path"),
+            package.pointer("/migration/plans/0/phases/0/units/2/path")
         );
         assert_eq!(
             rewritten.pointer("/migration/plans/1/phases/0/units/0/path"),
             package.pointer("/migration/plans/1/phases/0/units/0/path")
+        );
+    }
+
+    #[test]
+    fn rewrite_compatible_migration_unit_paths_appends_after_historical_units() {
+        let package = json!({
+            "migration": {"plans": [{
+                "mode": "compatible",
+                "to": "1.1.0",
+                "phases": [{"id": "upgrade", "units": [
+                    {"kind": "write", "path": "migrations/v0.9.0-to-v1.0.0.tql"}
+                ]}]
+            }]}
+        });
+
+        let rewritten = rewrite_compatible_migration_unit_paths(
+            &package,
+            "generated/apply-units/migrations/v1.0.0-to-v1.1.0/0001.tql",
+            "1.1.0",
+        );
+
+        assert_eq!(
+            rewritten.pointer("/migration/plans/0/phases/0/units"),
+            Some(&json!([
+                {"kind": "write", "path": "migrations/v0.9.0-to-v1.0.0.tql"},
+                {
+                    "kind": "write",
+                    "path": "generated/apply-units/migrations/v1.0.0-to-v1.1.0/0001.tql"
+                }
+            ]))
         );
     }
 
