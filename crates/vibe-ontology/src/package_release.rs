@@ -6,7 +6,7 @@ use serde::Serialize;
 use serde_json::{json, Map, Value};
 
 use crate::error::{Error, Result};
-use crate::version::{resolve_release_version, BumpKind};
+use crate::version::{resolve_release_version, BumpKind, SemanticVersion, VersionRange};
 
 const OPTIONAL_RELEASE_SCRIPTS: [&str; 1] = ["test:typedb-migration"];
 
@@ -39,6 +39,7 @@ pub fn strip_migration_metadata(package_json: &Value) -> Value {
 pub fn rewrite_compatible_migration_unit_paths(
     package_json: &Value,
     migration_path: &str,
+    current_version: &str,
     next_version: &str,
 ) -> Value {
     if migration_path.is_empty() {
@@ -52,10 +53,17 @@ pub fn rewrite_compatible_migration_unit_paths(
         return package_json.clone();
     };
 
+    let current_version = SemanticVersion::parse(current_version).ok();
     let mut changed = false;
     for plan in plans {
         if plan.get("mode").and_then(Value::as_str) != Some("compatible")
             || plan.get("to").and_then(Value::as_str) != Some(next_version)
+            || !plan
+                .get("from")
+                .and_then(Value::as_str)
+                .and_then(|range| VersionRange::parse(range).ok())
+                .zip(current_version.as_ref())
+                .is_some_and(|(range, version)| range.satisfies(version))
         {
             continue;
         }
@@ -538,6 +546,7 @@ mod tests {
             "migration": {"plans": [
                 {
                     "mode": "compatible",
+                    "from": "1.0.x",
                     "to": "1.1.0",
                     "phases": [{"id": "upgrade", "units": [
                         {"kind": "write", "path": "migrations/v0.9.0-to-v1.0.0.tql"},
@@ -559,6 +568,7 @@ mod tests {
         let rewritten = rewrite_compatible_migration_unit_paths(
             &package,
             "migrations/v1.0.1-to-v1.1.0.tql",
+            "1.0.1",
             "1.1.0",
         );
         assert_eq!(
@@ -584,6 +594,7 @@ mod tests {
         let package = json!({
             "migration": {"plans": [{
                 "mode": "compatible",
+                "from": "1.0.0",
                 "to": "1.1.0",
                 "phases": [{"id": "upgrade", "units": [
                     {"kind": "write", "path": "migrations/v0.9.0-to-v1.0.0.tql"}
@@ -594,6 +605,7 @@ mod tests {
         let rewritten = rewrite_compatible_migration_unit_paths(
             &package,
             "generated/apply-units/migrations/v1.0.0-to-v1.1.0/0001.tql",
+            "1.0.0",
             "1.1.0",
         );
 
@@ -606,6 +618,48 @@ mod tests {
                     "path": "generated/apply-units/migrations/v1.0.0-to-v1.1.0/0001.tql"
                 }
             ]))
+        );
+    }
+
+    #[test]
+    fn generated_migration_is_added_only_to_plan_covering_current_version() {
+        let package = json!({
+            "migration": {"plans": [
+                {
+                    "id": "historical",
+                    "from": "0.1.4",
+                    "to": "0.1.7",
+                    "mode": "compatible",
+                    "phases": [{"id": "upgrade", "units": [
+                        {"kind": "write", "path": "migrations/v0.1.4-to-v0.1.7-data.tql"}
+                    ]}]
+                },
+                {
+                    "id": "current",
+                    "from": "0.1.6",
+                    "to": "0.1.7",
+                    "mode": "compatible",
+                    "phases": [{"id": "migrate", "units": [
+                        {"kind": "write", "path": "data/provenance.tql"}
+                    ]}]
+                }
+            ]}
+        });
+
+        let rewritten = rewrite_compatible_migration_unit_paths(
+            &package,
+            "migrations/v0.1.6-to-v0.1.7.tql",
+            "0.1.6",
+            "0.1.7",
+        );
+
+        assert_eq!(
+            rewritten.pointer("/migration/plans/0/phases/0/units"),
+            package.pointer("/migration/plans/0/phases/0/units")
+        );
+        assert_eq!(
+            rewritten.pointer("/migration/plans/1/phases/0/units/1/path"),
+            Some(&json!("migrations/v0.1.6-to-v0.1.7.tql"))
         );
     }
 

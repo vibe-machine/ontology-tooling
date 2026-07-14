@@ -183,6 +183,7 @@ fn execute_release(options: &ReleaseArgs) -> Result<ReleaseSummary> {
                     let rewritten_package_json = rewrite_compatible_migration_unit_paths(
                         &current_package_json,
                         &migration_path,
+                        &plan.current_version,
                         &plan.next_version,
                     );
                     if rewritten_package_json != current_package_json {
