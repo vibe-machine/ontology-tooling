@@ -1,5 +1,7 @@
 repos:
-  primary: "."
-  additional:
-    - "/Users/kenpo/SoftwareProjects/collection-one/OneWorkspace/.claude/worktrees/serene-roentgen-c11f28"
-    - "/Users/kenpo/SoftwareProjects/collection-vibe-machine/ontology-gist"
+    primary: "."
+    additional:
+        - "/Users/kenpo/SoftwareProjects/collection-one/OneWorkspace/.claude/worktrees/serene-roentgen-c11f28"
+        - "/Users/kenpo/SoftwareProjects/collection-vibe-machine/ontology-gist"
+sync:
+    remote: "git+ssh://git@github.com/vibe-machine/ontology-tooling.git"
