@@ -193,5 +193,53 @@ fn help_includes_all_subcommands() {
         .stdout(contains("validate-migration"))
         .stdout(contains("validate-package"))
         .stdout(contains("version"))
+        .stdout(contains("split-apply-units"))
         .stdout(contains("completions"));
+}
+
+#[test]
+fn split_apply_units_writes_units_and_reports_hashes() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+    write(&root.join("data/docs.tql"), "put $r isa Thing;\n");
+    write(
+        &root.join("generated/apply-units/data/docs/0009.tql"),
+        "stale\n",
+    );
+    write(
+        &root.join("generated/apply-units/data/other/0001.tql"),
+        "kept\n",
+    );
+
+    let output = Command::cargo_bin("ont")
+        .unwrap()
+        .args(["--format", "json", "split-apply-units", "--root"])
+        .arg(root)
+        .args([
+            "--source",
+            "data/docs.tql",
+            "--manifest",
+            "manifests/m.json",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        report["paths"],
+        serde_json::json!(["generated/apply-units/data/docs/0001.tql"])
+    );
+    assert_eq!(report["artifacts"][0]["kind"], "apply-unit");
+    assert_eq!(report["artifacts"][0]["sha256"].as_str().unwrap().len(), 64);
+    assert_eq!(
+        fs::read_to_string(root.join("generated/apply-units/data/docs/0001.tql")).unwrap(),
+        "# Generated executable apply unit from data/docs.tql\n# manifest: manifests/m.json\n\nput $r isa Thing;\n"
+    );
+    assert!(!root
+        .join("generated/apply-units/data/docs/0009.tql")
+        .exists());
+    assert!(root
+        .join("generated/apply-units/data/other/0001.tql")
+        .exists());
 }

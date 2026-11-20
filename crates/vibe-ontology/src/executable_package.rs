@@ -1098,6 +1098,48 @@ pub fn prepare_executable_package(
     Ok(preparer.package)
 }
 
+/// One generated apply unit: its repo-relative path and its full text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplyUnit {
+    pub path: String,
+    pub text: String,
+}
+
+/// Split one TypeQL write file into contextual apply units at
+/// `generated/apply-units/<source stem>/NNNN.tql`.
+///
+/// Unlike [`prepare_executable_package`], this always shards (even when the
+/// file would fit in one unit) and never touches `package.json` or a
+/// manifest: the caller (a package's own generator) records the paths and
+/// hashes. It replaces the `buildContextualChunks` + `renderShardWithHeaders`
+/// pair that package generators imported from the deleted JS library.
+/// An empty (or whitespace-only) source yields no units.
+pub fn render_contextual_apply_units(
+    source_path: &str,
+    text: &str,
+    manifest_path: Option<&str>,
+    upstream_commit: Option<&str>,
+) -> Result<Vec<ApplyUnit>> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    let chunks = build_contextual_chunks(trimmed, PrepareExecutablePackageOptions::default())?;
+    Ok(chunks
+        .iter()
+        .enumerate()
+        .map(|(index, chunk)| ApplyUnit {
+            path: build_shard_path(source_path, index),
+            text: render_shard_with_headers(source_path, chunk, manifest_path, upstream_commit),
+        })
+        .collect())
+}
+
+/// SHA-256 of `text` as lowercase hex, the form package manifests record.
+pub fn sha256_hex(text: &str) -> String {
+    hash_bytes(text.as_bytes())
+}
+
 fn assert_safe_write_unit(relative_path: &str, text: &str) -> Result<()> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -1540,6 +1582,54 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "version error: write block exceeds safe size limit (2 chars > 1) and must be split at the source"
+        );
+    }
+
+    #[test]
+    fn contextual_apply_units_always_shard_with_headers() {
+        let units = render_contextual_apply_units(
+            "data/docs.tql",
+            "\nput $r isa Thing;\n",
+            Some("manifests/fixture.json"),
+            Some("abc123"),
+        )
+        .unwrap();
+        assert_eq!(
+            units,
+            vec![ApplyUnit {
+                path: "generated/apply-units/data/docs/0001.tql".to_string(),
+                text: "# Generated executable apply unit from data/docs.tql\n# manifest: manifests/fixture.json\n# upstream-commit: abc123\n\nput $r isa Thing;\n".to_string(),
+            }]
+        );
+        assert_eq!(
+            sha256_hex(&units[0].text),
+            hash_bytes(units[0].text.as_bytes())
+        );
+    }
+
+    #[test]
+    fn contextual_apply_units_split_past_the_block_limit() {
+        let text = repeated_put_file(MAX_WRITE_UNIT_BLOCKS + 10, 8);
+        let units = render_contextual_apply_units("data/docs.tql", &text, None, None).unwrap();
+        let paths: Vec<_> = units.iter().map(|unit| unit.path.as_str()).collect();
+        assert_eq!(
+            paths,
+            vec![
+                "generated/apply-units/data/docs/0001.tql",
+                "generated/apply-units/data/docs/0002.tql",
+            ]
+        );
+        assert!(units[0]
+            .text
+            .starts_with("# Generated executable apply unit from data/docs.tql\n\n"));
+    }
+
+    #[test]
+    fn contextual_apply_units_of_an_empty_file_are_empty() {
+        assert!(
+            render_contextual_apply_units("data/docs.tql", "  \n", None, None)
+                .unwrap()
+                .is_empty()
         );
     }
 }

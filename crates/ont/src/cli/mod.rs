@@ -9,6 +9,7 @@ mod corpus;
 mod diff;
 mod prepare_package;
 mod release;
+mod split_apply_units;
 mod validate_migration;
 mod validate_package;
 mod version;
@@ -53,6 +54,8 @@ pub enum Command {
     PreparePackage(prepare_package::PreparePackageArgs),
     /// Validate or publish an ontology package release.
     Release(release::ReleaseArgs),
+    /// Split one TypeQL write file into apply units (for package generators).
+    SplitApplyUnits(split_apply_units::SplitApplyUnitsArgs),
     /// Launch the interactive TUI.
     Tui,
     /// Validate an ontology package's migration contract.
@@ -89,6 +92,7 @@ pub async fn run(cli: Cli) -> Result<()> {
         Command::Diff(args) => diff::run(&cli, &args),
         Command::PreparePackage(args) => prepare_package::run(&cli, &args),
         Command::Release(args) => release::run(&cli, &args),
+        Command::SplitApplyUnits(args) => split_apply_units::run(&cli, &args),
         Command::Tui => crate::tui::run(&cli).await,
         Command::ValidateMigration(args) => validate_migration::run(&cli, &args),
         Command::ValidatePackage(args) => validate_package::run(&cli, &args),
