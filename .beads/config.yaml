@@ -5,3 +5,5 @@ repos:
         - "/Users/kenpo/SoftwareProjects/collection-vibe-machine/ontology-gist"
 sync:
     remote: "git+ssh://git@github.com/vibe-machine/ontology-tooling.git"
+export:
+    auto: true
