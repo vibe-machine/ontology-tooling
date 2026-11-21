@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Upgrade a package candidate from every released version, as the app does, on a throwaway TypeDB"
+#USAGE arg "<repo>" help="Path to the ontology repository (the candidate's working tree)"
+#USAGE flag "--quick" help="Only from the previous release, plus the database that lived through every release"
+set -euo pipefail
+
+args=(--format text check-upgrade --repo "${usage_repo?}")
+if [ "${usage_quick:-false}" = "true" ]; then
+  args+=(--quick)
+fi
+exec "${MISE_PROJECT_ROOT:-.}/bin/ont" "${args[@]}"

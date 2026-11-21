@@ -27,6 +27,7 @@ pub mod release_args;
 pub mod release_integrity;
 pub mod stored_questions;
 pub mod throwaway_typedb;
+pub mod upgrade_check;
 pub mod upgrade_limits;
 pub mod version;
 

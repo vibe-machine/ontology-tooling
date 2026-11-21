@@ -9,27 +9,28 @@ use anyhow::{bail, Context, Result};
 use clap::Args;
 use serde::Serialize;
 use serde_json::Value;
-use vibe_ontology::bootstrap_uniqueness::validate_bootstrap_uniqueness;
 use vibe_ontology::competency_questions::{
     check_release_gate, read_declaration, validate_competency_questions, write_questions_doc,
     CompetencyDeclaration,
 };
 use vibe_ontology::stored_questions::{data_path, write_generated_from};
 
-use super::check_questions::run_and_record;
+use super::qualify::{qualify, QualifyOptions};
 use vibe_ontology::executable_package::prepare_executable_package;
-use vibe_ontology::migration_diff::generate_upgrade;
+use vibe_ontology::migration_diff::{generate_upgrade, is_provenance_path, write_schema_upgrade};
 use vibe_ontology::package_release::{
-    expand_migration_write_unit, expected_release_commit_message, migration_preflight_assertion,
+    ensure_generated_migration, expand_migration_write_unit, expected_release_commit_message,
+    generated_plan, generated_write_placeholder, migration_preflight_assertion,
     migration_verify_assertion, plan_package_release, release_scripts_to_run,
-    resolve_module_repo_url, rewrite_compatible_migration_unit_paths, strip_migration_metadata,
-    ReleasePlan, Rename,
+    replace_generated_plans, resolve_module_repo_url, rewrite_compatible_migration_unit_paths,
+    supported_sources, ReleasePlan, Rename,
 };
-use vibe_ontology::package_validator::validate_package_contract;
+use vibe_ontology::package_validator::{check_upgrade_test_script, validate_package_contract};
 use vibe_ontology::release_args::{validate_release_args, ReleaseArgs as ValidatedReleaseArgs};
 use vibe_ontology::release_integrity::{
     check_bump, previous_tag, schema_labels_at, tag_exists, validate_released,
 };
+use vibe_ontology::upgrade_check::released_tags;
 use vibe_ontology::version::SemanticVersion;
 
 use super::{emit_json, Cli, Format};
@@ -190,65 +191,122 @@ fn execute_release(options: &ReleaseArgs) -> Result<ReleaseSummary> {
             )
         })?;
     } else {
+        // A package with an earlier release declares and tests its upgrade
+        // from it: add a generated plan when the package has none, and refuse
+        // before any change when the package does not run the upgrade test.
+        let mut next_package_json = plan.next_package_json.clone();
+        if tag_exists(&repo_path, &format!("v{}", plan.current_version))? {
+            ensure_generated_migration(
+                &mut next_package_json,
+                &plan.current_version,
+                &plan.next_version,
+            )?;
+            check_upgrade_test_script(&next_package_json)?;
+        }
         let mutated = (|| -> Result<()> {
-            write_json(&package_json_path, &plan.next_package_json)?;
+            write_json(&package_json_path, &next_package_json)?;
             apply_rename_plan(&repo_path, &plan.rename_plan)?;
 
             run_release_validation(
                 &repo_path,
                 QuestionsMode::Run,
                 Some(|repo: &Path| {
-                    let upgrade =
-                        generate_upgrade(repo, &plan.current_version, &plan.next_version)?;
-                    if let Some(upgrade) = upgrade {
-                        let migration_path = upgrade.path.clone();
-                        write_migration_assertions(
-                            repo,
-                            &plan.next_package_json,
-                            &plan.current_version,
-                            &plan.next_version,
-                        )?;
-                        let package_json_path = repo.join("package.json");
-                        let current_package_json = read_json(&package_json_path)?;
-                        // A split upgrade is a directory of ordered units: a
-                        // migration plan runs each as its own write unit.
-                        let single_path = format!(
-                            "migrations/v{}-to-v{}.tql",
-                            plan.current_version, plan.next_version
-                        );
-                        let mut rewritten_package_json = rewrite_compatible_migration_unit_paths(
-                            &current_package_json,
-                            &single_path,
-                            &plan.current_version,
-                            &plan.next_version,
-                        );
-                        if upgrade.is_split() {
-                            rewritten_package_json = expand_migration_write_unit(
-                                &rewritten_package_json,
-                                &single_path,
-                                &upgrade.files,
-                            );
-                        }
-                        if rewritten_package_json != current_package_json {
-                            write_json(&package_json_path, &rewritten_package_json)?;
-                        }
-                        summary.migration_diff = Some(migration_path);
-                        return Ok(());
-                    }
-
                     let package_json_path = repo.join("package.json");
                     let current_package_json = read_json(&package_json_path)?;
-                    if current_package_json
+                    if !current_package_json
                         .get("migration")
                         .is_some_and(json_truthy)
                     {
-                        write_json(
-                            &package_json_path,
-                            &strip_migration_metadata(&current_package_json),
-                        )?;
-                        remove_path(&repo.join("migrations"))?;
-                        run_package_script(repo, "refresh:package-contract")?;
+                        // First release: nothing to upgrade from.
+                        return Ok(());
                     }
+                    let name = current_package_json
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string();
+                    let next = SemanticVersion::parse(&plan.next_version)?;
+                    let released: Vec<SemanticVersion> = released_tags(repo)?
+                        .into_iter()
+                        .map(|(_, version)| version)
+                        .collect();
+                    let provenance: Vec<String> = current_package_json
+                        .get("data")
+                        .and_then(Value::as_array)
+                        .into_iter()
+                        .flatten()
+                        .filter_map(Value::as_str)
+                        .filter(|path| is_provenance_path(path))
+                        .map(ToOwned::to_owned)
+                        .collect();
+
+                    // One generated plan per release the package declares it
+                    // upgrades from (`supportsUpgradeFrom`). The app refuses an
+                    // upgrade from an installed release no plan covers.
+                    let mut generated = Vec::new();
+                    let mut written = Vec::new();
+                    for source in supported_sources(&current_package_json, &released, &next) {
+                        let from = source.to_string();
+                        let upgrade = generate_upgrade(repo, &from, &plan.next_version)?;
+                        write_migration_assertions(
+                            repo,
+                            &plan.next_package_json,
+                            &from,
+                            &plan.next_version,
+                        )?;
+                        write_schema_upgrade(repo, &from, &plan.next_version)?;
+                        let mut write_units: Vec<String> = upgrade
+                            .as_ref()
+                            .map(|upgrade| upgrade.files.clone())
+                            .unwrap_or_default();
+                        write_units.extend(provenance.iter().cloned());
+                        if let Some(upgrade) = upgrade {
+                            written.push(upgrade.path);
+                        }
+                        generated.push(generated_plan(
+                            &name,
+                            &from,
+                            &plan.next_version,
+                            &write_units,
+                        ));
+                    }
+
+                    // Hand-written plans that name the generated write
+                    // placeholder get the upgrade from the release replaced.
+                    let placeholder =
+                        generated_write_placeholder(&plan.current_version, &plan.next_version);
+                    // (The generated plans were dropped by the version bump; only
+                    // hand-written plans are here.)
+                    let mut rewritten_package_json = rewrite_compatible_migration_unit_paths(
+                        &current_package_json,
+                        &placeholder,
+                        &plan.current_version,
+                        &plan.next_version,
+                    );
+                    let references_placeholder = rewritten_package_json
+                        .pointer("/migration/plans")
+                        .and_then(Value::as_array)
+                        .into_iter()
+                        .flatten()
+                        .any(|plan| plan.to_string().contains(&placeholder));
+                    if references_placeholder {
+                        let mut units =
+                            generate_upgrade(repo, &plan.current_version, &plan.next_version)?
+                                .map(|upgrade| upgrade.files)
+                                .unwrap_or_default();
+                        units.extend(provenance.iter().cloned());
+                        rewritten_package_json = expand_migration_write_unit(
+                            &rewritten_package_json,
+                            &placeholder,
+                            &units,
+                        );
+                    }
+                    let rewritten_package_json =
+                        replace_generated_plans(&rewritten_package_json, generated);
+                    if rewritten_package_json != current_package_json {
+                        write_json(&package_json_path, &rewritten_package_json)?;
+                    }
+                    summary.migration_diff = (!written.is_empty()).then(|| written.join(", "));
                     Ok(())
                 }),
             )?;
@@ -481,49 +539,17 @@ where
     }
     prepare_executable_package(repo_path, None)?;
 
-    let package_json = validate_package_contract(repo_path)?;
-    validate_bootstrap_uniqueness(repo_path)?;
-    match read_declaration(repo_path, &package_json)? {
-        CompetencyDeclaration::Waived { reason } => {
-            eprintln!("notice: competency questions waived: {reason}");
-        }
-        CompetencyDeclaration::Declared { path, file } => match questions_mode {
-            QuestionsMode::Verify => {}
-            QuestionsMode::Run => {
-                let (run, _) = tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(run_and_record(
-                        repo_path,
-                        &package_json,
-                        &path,
-                        &file,
-                        None,
-                        false,
-                    ))
-                })?;
-                let failed = run
-                    .outcomes
-                    .iter()
-                    .filter(|outcome| !outcome.passed())
-                    .count();
-                if failed > 0 {
-                    bail!(
-                        "{failed} of {} competency questions failed on the release candidate",
-                        run.outcomes.len()
-                    );
-                }
-                if let Err(problem) = &run.installed {
-                    bail!("the release candidate installs its questions wrongly: {problem}");
-                }
-            }
-        },
-    }
-
-    for script_name in release_scripts_to_run(&package_json) {
-        if script_name == "refresh:package-contract" {
-            continue;
-        }
-        run_package_script(repo_path, &script_name)?;
-    }
+    // One path: the same qualification `ont qualify` runs, in full.
+    tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(qualify(
+            repo_path,
+            &QualifyOptions {
+                quick: false,
+                run_questions: questions_mode == QuestionsMode::Run,
+                typedb_bin: None,
+            },
+        ))
+    })?;
     Ok(())
 }
 

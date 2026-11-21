@@ -5,10 +5,12 @@ use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 
 mod check_questions;
+mod check_upgrade;
 mod completions;
 mod corpus;
 mod diff;
 mod prepare_package;
+mod qualify;
 mod release;
 mod split_apply_units;
 mod validate_migration;
@@ -44,6 +46,8 @@ pub struct Cli {
 pub enum Command {
     /// Run a package's competency questions against a throwaway TypeDB.
     CheckQuestions(check_questions::CheckQuestionsArgs),
+    /// Run a package's upgrade plans on a throwaway TypeDB holding earlier releases.
+    CheckUpgrade(check_upgrade::CheckUpgradeArgs),
     /// Generate shell completions for the supplied shell.
     Completions {
         #[arg(value_enum)]
@@ -55,6 +59,8 @@ pub enum Command {
     Diff(diff::DiffArgs),
     /// Prepare an ontology package's executable apply units (splits large writes).
     PreparePackage(prepare_package::PreparePackageArgs),
+    /// Decide whether a package candidate is fit to release (all checks, PASS or FAIL).
+    Qualify(qualify::QualifyArgs),
     /// Validate or publish an ontology package release.
     Release(release::ReleaseArgs),
     /// Split one TypeQL write file into apply units (for package generators).
@@ -91,10 +97,12 @@ pub async fn run(cli: Cli) -> Result<()> {
 
     match command {
         Command::CheckQuestions(args) => check_questions::run(&cli, &args).await,
+        Command::CheckUpgrade(args) => check_upgrade::run(&cli, &args).await,
         Command::Completions { shell } => completions::run(shell),
         Command::Corpus(args) => corpus::run(&cli, &args).await,
         Command::Diff(args) => diff::run(&cli, &args),
         Command::PreparePackage(args) => prepare_package::run(&cli, &args),
+        Command::Qualify(args) => qualify::run(&cli, &args).await,
         Command::Release(args) => release::run(&cli, &args),
         Command::SplitApplyUnits(args) => split_apply_units::run(&cli, &args),
         Command::Tui => crate::tui::run(&cli).await,

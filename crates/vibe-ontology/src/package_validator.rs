@@ -15,6 +15,7 @@ use crate::competency_questions::validate_competency_questions;
 use crate::error::{Error, Result};
 use crate::executable_package::{validate_executable_package, APPLY_UNITS_ROOT};
 use crate::migration_contract::validate_migration_contract;
+use crate::package_release::supported_sources;
 use crate::release_integrity::{validate_listed_paths, validate_version_stamps};
 use crate::upgrade_limits::validate_upgrade_files;
 use crate::version::{SemanticVersion, VersionRange};
@@ -270,20 +271,34 @@ fn validate_assembly(repo_path: &Path, package: &Value) -> Result<()> {
     Ok(())
 }
 
+/// A package with an earlier release must declare and test its upgrade from
+/// it: a `migration` plan from the previous release, `supportsUpgradeFrom`
+/// covering it, and a `test:typedb-migration` script run by `test`. Without
+/// the plan the app upgrades an installed release by re-applying every data
+/// file, and nothing tests that upgrade. A first release (no earlier tag) is
+/// exempt.
 fn validate_previous_release_coverage(repo_path: &Path, package: &Value) -> Result<()> {
+    let current = parse_semver(package.get("version"))?;
+    let Some(previous) = previous_release_version(repo_path, current)? else {
+        return Ok(());
+    };
+    let version = display_js(package.get("version"));
     let Some(plans) = package
         .get("migration")
         .and_then(|migration| migration.get("plans"))
         .and_then(Value::as_array)
         .filter(|plans| !plans.is_empty())
     else {
-        return Ok(());
+        return Err(invalid(format!(
+            "package.json declares no upgrade from the previous release v{previous}: add a \
+             \"migration\" section ({{\"format\": 1, \"supportsUpgradeFrom\": [...], \"plans\": \
+             [...]}}) with a plan whose \"from\" covers {previous} and whose \"to\" is {version}. \
+             `ont release` writes a generated one (\"generated\": true) when the section is \
+             missing. Without it the app upgrades an installed {previous} by re-applying every \
+             data file, and no release tests that upgrade."
+        )));
     };
 
-    let current = parse_semver(package.get("version"))?;
-    let Some(previous) = previous_release_version(repo_path, current)? else {
-        return Ok(());
-    };
     let mut covered = false;
     for plan in plans {
         let range = VersionRange::parse(plan.get("from").and_then(Value::as_str).unwrap_or(""))?;
@@ -294,9 +309,70 @@ fn validate_previous_release_coverage(repo_path: &Path, package: &Value) -> Resu
     }
     if !covered {
         return Err(invalid(format!(
-            "migration plans do not cover previous release {previous} -> {}",
-            display_js(package.get("version"))
+            "migration plans do not cover previous release {previous} -> {version}"
         )));
+    }
+
+    let supported = package
+        .pointer("/migration/supportsUpgradeFrom")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .filter_map(|range| VersionRange::parse(range).ok())
+        .any(|range| range.satisfies(&previous));
+    if !supported {
+        return Err(invalid(format!(
+            "migration.supportsUpgradeFrom must include a range covering the previous release \
+             {previous}, for example \"{}.{}.x\"",
+            previous.major, previous.minor
+        )));
+    }
+
+    // Every release the package says it upgrades from needs a plan: the app
+    // refuses an upgrade that has neither a plan nor an upgrade file.
+    for source in supported_sources(package, &released_versions(repo_path)?, &current) {
+        let covered = plans.iter().any(|plan| {
+            plan.get("to").and_then(Value::as_str) == Some(version.as_str())
+                && plan
+                    .get("from")
+                    .and_then(Value::as_str)
+                    .and_then(|range| VersionRange::parse(range).ok())
+                    .is_some_and(|range| range.satisfies(&source))
+        });
+        if !covered {
+            return Err(invalid(format!(
+                "migration.supportsUpgradeFrom covers the released {source} but no migration plan \
+                 upgrades from it to {version}. The app refuses an upgrade without a plan (\"no \
+                 migration plan matches installed version\"). Add a plan from {source} (`ont \
+                 release` generates one for every release supportsUpgradeFrom covers), or narrow \
+                 supportsUpgradeFrom to declare {source} not supported."
+            )));
+        }
+    }
+
+    check_upgrade_test_script(package)
+}
+
+/// The upgrade test a package with an earlier release must run from `test`.
+pub fn check_upgrade_test_script(package: &Value) -> Result<()> {
+    let migration_script = package
+        .pointer("/scripts/test:typedb-migration")
+        .and_then(Value::as_str)
+        .is_some_and(|script| !script.trim().is_empty());
+    let test_runs_it = package
+        .pointer("/scripts/test")
+        .and_then(Value::as_str)
+        .is_some_and(|script| script.contains("test:typedb-migration"));
+    if !migration_script || !test_runs_it {
+        return Err(invalid(
+            "package.json scripts must test the upgrade from the previous release: add \
+             \"test:typedb-migration\": \"../ontology-tooling/bin/ont check-upgrade --repo .\" \
+             and run it from \"test\" (for example \"test\": \"npm run validate:bootstrap && npm \
+             run test:typedb-bootstrap && npm run test:typedb-migration\"). `ont release` runs it \
+             on every release."
+                .to_string(),
+        ));
     }
     Ok(())
 }
@@ -305,6 +381,13 @@ fn previous_release_version(
     repo_path: &Path,
     current: SemanticVersion,
 ) -> Result<Option<SemanticVersion>> {
+    Ok(released_versions(repo_path)?
+        .into_iter()
+        .rfind(|version| *version < current))
+}
+
+/// Every `v*.*.*` release tag, oldest first.
+fn released_versions(repo_path: &Path) -> Result<Vec<SemanticVersion>> {
     let output = Command::new("git")
         .args(["tag", "--list", "v*.*.*"])
         .current_dir(repo_path)
@@ -321,7 +404,7 @@ fn previous_release_version(
         versions.push(parse_semver(Some(&tag_value))?);
     }
     versions.sort_unstable();
-    Ok(versions.into_iter().rfind(|version| *version < current))
+    Ok(versions)
 }
 
 fn schema_docs_stem(relative_path: &str) -> Option<&str> {
@@ -750,17 +833,105 @@ mod tests {
         }
     }
 
+    fn covered_package() -> Value {
+        let mut package = migration_package("1.0.0", "migrations/v1.0.0-to-v1.0.1/0001.tql");
+        package["migration"]["supportsUpgradeFrom"] = json!(["1.0.x"]);
+        package["scripts"]["test"] = json!("npm run test:typedb-migration");
+        package
+    }
+
+    fn validate_with_tag(package: &Value, files: &[(&str, &str)]) -> Result<Value> {
+        let dir = create_fixture(package, files);
+        run_git(dir.path(), &["tag", "v1.0.0"]);
+        validate_package_contract(dir.path())
+    }
+
     #[test]
     fn accepts_plans_that_cover_the_previous_release_tag() {
-        let package = migration_package(">=1.0.0 <1.0.1", "migrations/v1.0.0-to-v1.0.1.tql");
+        validate_with_tag(
+            &covered_package(),
+            &[("migrations/v1.0.0-to-v1.0.1/0001.tql", "put $x isa thing;")],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_package_with_an_earlier_release_must_declare_its_upgrade() {
+        let mut package = covered_package();
+        object_mut(&mut package).remove("migration");
+        match validate_with_tag(&package, &[]) {
+            Err(Error::Version(message)) => assert_eq!(
+                message,
+                "package.json declares no upgrade from the previous release v1.0.0: add a \
+                 \"migration\" section ({\"format\": 1, \"supportsUpgradeFrom\": [...], \"plans\": \
+                 [...]}) with a plan whose \"from\" covers 1.0.0 and whose \"to\" is 1.0.1. `ont \
+                 release` writes a generated one (\"generated\": true) when the section is \
+                 missing. Without it the app upgrades an installed 1.0.0 by re-applying every \
+                 data file, and no release tests that upgrade."
+            ),
+            other => panic!("expected a missing-upgrade error, got {other:?}"),
+        }
+        // A first release has nothing to upgrade from.
+        let mut first = package.clone();
+        object_mut(&mut first).insert("version".to_string(), json!("1.0.0"));
+        let dir = create_fixture(&first, &[]);
+        validate_package_contract(dir.path()).unwrap();
+    }
+
+    #[test]
+    fn supports_upgrade_from_must_cover_the_previous_release() {
+        let mut package = covered_package();
+        package["migration"]["supportsUpgradeFrom"] = json!(["0.9.x"]);
+        match validate_with_tag(
+            &package,
+            &[("migrations/v1.0.0-to-v1.0.1/0001.tql", "put $x isa thing;")],
+        ) {
+            Err(Error::Version(message)) => assert_eq!(
+                message,
+                "migration.supportsUpgradeFrom must include a range covering the previous release \
+                 1.0.0, for example \"1.0.x\""
+            ),
+            other => panic!("expected a supportsUpgradeFrom error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn every_supported_release_needs_a_plan() {
+        let mut package = covered_package();
+        package["migration"]["supportsUpgradeFrom"] = json!([">=0.9.0"]);
         let dir = create_fixture(
             &package,
-            &[(
-                "migrations/v1.0.0-to-v1.0.1.tql",
-                "match $x isa thing; insert $y isa thing;",
-            )],
+            &[("migrations/v1.0.0-to-v1.0.1/0001.tql", "put $x isa thing;")],
         );
+        run_git(dir.path(), &["tag", "v0.9.0"]);
         run_git(dir.path(), &["tag", "v1.0.0"]);
-        validate_package_contract(dir.path()).unwrap();
+        match validate_package_contract(dir.path()) {
+            Err(Error::Version(message)) => assert_eq!(
+                message,
+                "migration.supportsUpgradeFrom covers the released 0.9.0 but no migration plan \
+                 upgrades from it to 1.0.1. The app refuses an upgrade without a plan (\"no \
+                 migration plan matches installed version\"). Add a plan from 0.9.0 (`ont \
+                 release` generates one for every release supportsUpgradeFrom covers), or narrow \
+                 supportsUpgradeFrom to declare 0.9.0 not supported."
+            ),
+            other => panic!("expected an uncovered-release error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_test_script_must_run_the_upgrade_test() {
+        let mut package = covered_package();
+        package["scripts"]["test"] = json!("npm run validate:bootstrap");
+        match validate_with_tag(&package, &[("migrations/v1.0.0-to-v1.0.1/0001.tql", "put $x isa thing;")]) {
+            Err(Error::Version(message)) => assert_eq!(
+                message,
+                "package.json scripts must test the upgrade from the previous release: add \
+                 \"test:typedb-migration\": \"../ontology-tooling/bin/ont check-upgrade --repo .\" \
+                 and run it from \"test\" (for example \"test\": \"npm run validate:bootstrap && npm \
+                 run test:typedb-bootstrap && npm run test:typedb-migration\"). `ont release` runs it \
+                 on every release."
+            ),
+            other => panic!("expected a test-script error, got {other:?}"),
+        }
     }
 }

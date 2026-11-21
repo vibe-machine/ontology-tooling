@@ -140,7 +140,7 @@ pub fn expand_migration_write_unit(
         let Some(phases) = plan.get_mut("phases").and_then(Value::as_array_mut) else {
             continue;
         };
-        for phase in phases {
+        for phase in phases.iter_mut() {
             let Some(units) = phase.get_mut("units").and_then(Value::as_array_mut) else {
                 continue;
             };
@@ -160,8 +160,145 @@ pub fn expand_migration_write_unit(
             }
             *units = expanded;
         }
+        // A phase left without units (a generated migrate phase when nothing
+        // but provenance changed and the package has none) is dropped.
+        phases.retain(|phase| {
+            phase
+                .get("units")
+                .and_then(Value::as_array)
+                .is_none_or(|units| !units.is_empty())
+        });
     }
     next_package_json
+}
+
+/// The schema unit of a generated plan: the package's schema, without its
+/// functions, applied before the plan's write units so they can use types
+/// the release adds.
+pub fn generated_schema_unit_path(current_version: &str, next_version: &str) -> String {
+    format!("migrations/v{current_version}-to-v{next_version}-schema.tql")
+}
+
+/// The placeholder write unit of a generated plan, replaced at release by the
+/// upgrade units and the provenance files.
+pub fn generated_write_placeholder(current_version: &str, next_version: &str) -> String {
+    format!("migrations/v{current_version}-to-v{next_version}.tql")
+}
+
+/// Adds a generated `migration` section (one `compatible` plan from
+/// `current_version`) to a package that has none. A package with an earlier
+/// release must declare how it upgrades from it; `ont release` calls this when
+/// the tag of `current_version` exists.
+pub fn ensure_generated_migration(
+    next_package_json: &mut Value,
+    current_version: &str,
+    _next_version: &str,
+) -> Result<()> {
+    if next_package_json
+        .get("migration")
+        .is_some_and(|value| !value.is_null())
+    {
+        return Ok(());
+    }
+    let Some(package) = next_package_json.as_object_mut() else {
+        return Ok(());
+    };
+    package.insert(
+        "migration".to_string(),
+        json!({
+            "format": 1,
+            "supportsUpgradeFrom": [semver_minor_range(current_version)?],
+            "plans": [],
+        }),
+    );
+    Ok(())
+}
+
+/// A generated plan from one released version: `preflight` (that version is
+/// recorded), `schema` (the package schema without functions, before the
+/// writes that may use new types; repeating it changes nothing), `migrate`
+/// (`write_units`, each its own transaction; dropped when empty) and `verify`
+/// (the new version is recorded). The app runs the phases in this order
+/// before the package schemas (`applyMigrationPlan`).
+pub fn generated_plan(
+    name: &str,
+    from_version: &str,
+    next_version: &str,
+    write_units: &[String],
+) -> Value {
+    let mut phases = vec![
+        phase(
+            "preflight",
+            "assert-data",
+            format!("migrations/preflight/assert-v{from_version}-module-version.tql"),
+        ),
+        phase(
+            "schema",
+            "schema",
+            generated_schema_unit_path(from_version, next_version),
+        ),
+    ];
+    if !write_units.is_empty() {
+        phases.push(json!({
+            "id": "migrate",
+            "units": write_units
+                .iter()
+                .map(|path| json!({"kind": "write", "path": path}))
+                .collect::<Vec<_>>(),
+        }));
+    }
+    phases.push(phase(
+        "verify",
+        "assert-data",
+        format!("migrations/verify/assert-v{next_version}-module-version.tql"),
+    ));
+    json!({
+        "id": format!("{name}-{from_version}-to-{next_version}"),
+        "from": from_version,
+        "to": next_version,
+        "mode": "compatible",
+        "generated": true,
+        "snapshot": {"required": false, "label": format!("pre-{name}-{next_version}-migration")},
+        "phases": phases,
+    })
+}
+
+/// The package with its generated plans replaced by `plans` (hand-written
+/// plans are kept, first).
+pub fn replace_generated_plans(package_json: &Value, plans: Vec<Value>) -> Value {
+    let mut next_package_json = package_json.clone();
+    if let Some(existing) = next_package_json
+        .pointer_mut("/migration/plans")
+        .and_then(Value::as_array_mut)
+    {
+        existing.retain(|plan| plan.get("generated").and_then(Value::as_bool) != Some(true));
+        existing.extend(plans);
+    }
+    next_package_json
+}
+
+/// The released versions a package declares it upgrades from: every tag
+/// below `next_version` that one of its `supportsUpgradeFrom` ranges covers.
+pub fn supported_sources(
+    package_json: &Value,
+    released: &[SemanticVersion],
+    next_version: &SemanticVersion,
+) -> Vec<SemanticVersion> {
+    let ranges: Vec<VersionRange> = package_json
+        .pointer("/migration/supportsUpgradeFrom")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .filter_map(|range| VersionRange::parse(range).ok())
+        .collect();
+    released
+        .iter()
+        .filter(|version| {
+            *version < next_version && ranges.iter().any(|range| range.satisfies(version))
+        })
+        .copied()
+        .collect()
 }
 
 fn generated_migration_target(path: &str) -> Option<&str> {
@@ -286,6 +423,9 @@ fn semver_minor_range(version: &str) -> Result<String> {
 }
 
 fn has_user_authored_phases(plan: &Value) -> bool {
+    if plan.get("generated").and_then(Value::as_bool) == Some(true) {
+        return false;
+    }
     plan.get("phases")
         .and_then(Value::as_array)
         .is_some_and(|phases| {
@@ -319,20 +459,42 @@ fn rewrite_migration_metadata(
         return Ok(());
     };
 
-    migration.insert(
-        "supportsUpgradeFrom".to_string(),
-        Value::Array(vec![Value::String(semver_minor_range(current_version)?)]),
-    );
+    // The author's ranges stay: they declare which installed releases this
+    // release upgrades from (every other release is not supported). The
+    // release being replaced is always among them.
+    let mut supported: Vec<Value> = migration
+        .get("supportsUpgradeFrom")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let current = SemanticVersion::parse(current_version).ok();
+    let covers_current = supported.iter().filter_map(Value::as_str).any(|range| {
+        VersionRange::parse(range)
+            .ok()
+            .zip(current.as_ref())
+            .is_some_and(|(range, version)| range.satisfies(version))
+    });
+    if !covers_current {
+        supported.push(Value::String(semver_minor_range(current_version)?));
+    }
+    migration.insert("supportsUpgradeFrom".to_string(), Value::Array(supported));
 
+    // Generated plans are written again by the release, one per supported
+    // release (see `generated_plan`).
     let Some(plans) = migration.get("plans").and_then(Value::as_array) else {
         return Ok(());
     };
+    let plans: Vec<Value> = plans
+        .iter()
+        .filter(|plan| plan.get("generated").and_then(Value::as_bool) != Some(true))
+        .cloned()
+        .collect();
     if plans.is_empty() {
+        migration.insert("plans".to_string(), Value::Array(Vec::new()));
         return Ok(());
     }
 
     let plan_count = plans.len();
-    let plans = plans.clone();
     let default_id = format!("{name}-{current_version}-to-{next_version}");
     let rewritten_plans = plans
         .iter()
@@ -391,6 +553,7 @@ fn rewrite_migration_metadata(
                     "phases".to_string(),
                     generated_phases(current_version, next_version),
                 );
+                base.insert("generated".to_string(), Value::Bool(true));
             }
 
             Value::Object(base)
@@ -409,9 +572,14 @@ fn generated_phases(current_version: &str, next_version: &str) -> Value {
             format!("migrations/preflight/assert-v{current_version}-module-version.tql"),
         ),
         phase(
+            "schema",
+            "schema",
+            generated_schema_unit_path(current_version, next_version),
+        ),
+        phase(
             "migrate",
             "write",
-            format!("migrations/v{current_version}-to-v{next_version}.tql"),
+            generated_write_placeholder(current_version, next_version),
         ),
         phase(
             "verify",
@@ -629,6 +797,92 @@ mod tests {
         assert_eq!(
             rewritten.pointer("/migration/plans/1/phases/0/units/0/path"),
             package.pointer("/migration/plans/1/phases/0/units/0/path")
+        );
+    }
+
+    #[test]
+    fn ensure_generated_migration_adds_a_section_only_when_none_is_declared() {
+        let mut package = json!({"name": "lingo", "version": "1.1.0"});
+        ensure_generated_migration(&mut package, "1.0.2", "1.1.0").unwrap();
+        assert_eq!(
+            package["migration"],
+            json!({"format": 1, "supportsUpgradeFrom": ["1.0.x"], "plans": []})
+        );
+        let declared = json!({"name": "gist", "migration": {"format": 1, "plans": []}});
+        let mut unchanged = declared.clone();
+        ensure_generated_migration(&mut unchanged, "1.0.0", "1.0.1").unwrap();
+        assert_eq!(unchanged, declared);
+    }
+
+    #[test]
+    fn a_generated_plan_runs_schema_before_writes() {
+        let units = vec!["migrations/v1.0.2-to-v1.1.0/0001.tql".to_string()];
+        assert_eq!(
+            generated_plan("lingo", "1.0.2", "1.1.0", &units),
+            json!({
+                "id": "lingo-1.0.2-to-1.1.0",
+                "from": "1.0.2",
+                "to": "1.1.0",
+                "mode": "compatible",
+                "generated": true,
+                "snapshot": {"required": false, "label": "pre-lingo-1.1.0-migration"},
+                "phases": [
+                    {"id": "preflight", "units": [{"kind": "assert-data", "path": "migrations/preflight/assert-v1.0.2-module-version.tql"}]},
+                    {"id": "schema", "units": [{"kind": "schema", "path": "migrations/v1.0.2-to-v1.1.0-schema.tql"}]},
+                    {"id": "migrate", "units": [{"kind": "write", "path": "migrations/v1.0.2-to-v1.1.0/0001.tql"}]},
+                    {"id": "verify", "units": [{"kind": "assert-data", "path": "migrations/verify/assert-v1.1.0-module-version.tql"}]}
+                ]
+            })
+        );
+        let phases = generated_plan("lingo", "1.0.1", "1.1.0", &[])["phases"].clone();
+        assert_eq!(phases.as_array().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn generated_plans_are_replaced_and_supported_ranges_kept_on_the_next_release() {
+        let mut package = json!({"name": "lingo", "version": "1.1.0", "migration": {
+            "format": 1,
+            "supportsUpgradeFrom": [">=1.0.1 <1.2.0"],
+            "plans": [
+                {"id": "hand", "from": "0.9.x", "to": "1.1.0", "mode": "compatible",
+                 "phases": [{"id": "schema", "units": [{"kind": "schema", "path": "migrations/hand-schema.tql"}]}]}
+            ]
+        }});
+        package = replace_generated_plans(
+            &package,
+            vec![generated_plan("lingo", "1.0.2", "1.1.0", &[])],
+        );
+        assert_eq!(package["migration"]["plans"].as_array().unwrap().len(), 2);
+        let plan = plan_package_release(&package, Some("patch"), None).unwrap();
+        let migration = &plan.next_package_json["migration"];
+        assert_eq!(migration["supportsUpgradeFrom"], json!([">=1.0.1 <1.2.0"]));
+        let plans = migration["plans"].as_array().unwrap();
+        assert_eq!(plans.len(), 1);
+        assert_eq!(plans[0]["from"], "0.9.x");
+        assert!(plans[0].get("generated").is_none());
+        let released: Vec<SemanticVersion> = ["0.1.9", "1.0.0", "1.0.1", "1.0.2", "1.1.0"]
+            .iter()
+            .map(|version| SemanticVersion::parse(version).unwrap())
+            .collect();
+        let next = SemanticVersion::parse("1.1.1").unwrap();
+        let sources: Vec<String> = supported_sources(&plan.next_package_json, &released, &next)
+            .iter()
+            .map(|version| format!("{}.{}.{}", version.major, version.minor, version.patch))
+            .collect();
+        assert_eq!(sources, ["1.0.1", "1.0.2", "1.1.0"]);
+    }
+
+    #[test]
+    fn expand_migration_write_unit_drops_a_phase_left_empty() {
+        let package = json!({"migration": {"plans": [{"phases": [
+            {"id": "migrate", "units": [{"kind": "write", "path": "migrations/v1.0.0-to-v1.0.1.tql"}]},
+            {"id": "verify", "units": [{"kind": "assert-data", "path": "v.tql"}]}
+        ]}]}});
+        let expanded =
+            expand_migration_write_unit(&package, "migrations/v1.0.0-to-v1.0.1.tql", &[]);
+        assert_eq!(
+            expanded.pointer("/migration/plans/0/phases"),
+            Some(&json!([{"id": "verify", "units": [{"kind": "assert-data", "path": "v.tql"}]}]))
         );
     }
 
@@ -990,7 +1244,7 @@ mod tests {
         assert_eq!(
             plan.next_package_json
                 .pointer("/migration/supportsUpgradeFrom"),
-            Some(&json!(["0.6.x"]))
+            Some(&json!(["0.5.x", "0.6.x"]))
         );
         assert_eq!(
             plan.next_package_json.pointer("/migration/plans/0/id"),
@@ -1017,6 +1271,13 @@ mod tests {
                     "units": [{
                         "kind": "assert-data",
                         "path": "migrations/preflight/assert-v0.6.0-module-version.tql",
+                    }],
+                },
+                {
+                    "id": "schema",
+                    "units": [{
+                        "kind": "schema",
+                        "path": "migrations/v0.6.0-to-v0.7.0-schema.tql",
                     }],
                 },
                 {

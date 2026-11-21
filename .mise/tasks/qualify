@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Decide whether an ontology package candidate is fit to release: every check, PASS or FAIL"
+#USAGE arg "<repo>" help="Path to the ontology repository (the candidate's working tree)"
+#USAGE flag "--quick" help="Upgrade only from the previous release and through history (for iteration; releases run the full test)"
+set -euo pipefail
+
+args=(qualify --repo "${usage_repo?}")
+if [ "${usage_quick:-false}" = "true" ]; then
+  args+=(--quick)
+fi
+exec "${MISE_PROJECT_ROOT:-.}/bin/ont" "${args[@]}"
