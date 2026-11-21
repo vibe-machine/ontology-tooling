@@ -129,6 +129,23 @@ fn validate_required_fields(package: &Value) -> Result<()> {
         ));
     }
     parse_semver(package.get("version"))?;
+    // The app's manifest decoder requires `description` and `prefix`; it finds
+    // what is installed by `moduleRepoUrl == source`, so without `source` it
+    // can neither upgrade the package nor record its installation.
+    for (field, why) in [
+        ("description", "the app cannot read a package.json without it"),
+        ("prefix", "the app cannot read a package.json without it"),
+        (
+            "source",
+            "the app finds the installed version by it (moduleRepoUrl) and cannot upgrade without it",
+        ),
+    ] {
+        if !is_non_empty_string(package.get(field)) {
+            return Err(invalid(format!(
+                "package.json '{field}' must be a non-empty string: {why}"
+            )));
+        }
+    }
     if package
         .get("schemas")
         .and_then(Value::as_array)
@@ -274,9 +291,9 @@ fn validate_assembly(repo_path: &Path, package: &Value) -> Result<()> {
 /// A package with an earlier release must declare and test its upgrade from
 /// it: a `migration` plan from the previous release, `supportsUpgradeFrom`
 /// covering it, and a `test:typedb-migration` script run by `test`. Without
-/// the plan the app upgrades an installed release by re-applying every data
-/// file, and nothing tests that upgrade. A first release (no earlier tag) is
-/// exempt.
+/// a plan (or an upgrade file) the app refuses to upgrade an installed release
+/// ("no migration plan matches installed version"), and nothing tests the
+/// upgrade. A first release (no earlier tag) is exempt.
 fn validate_previous_release_coverage(repo_path: &Path, package: &Value) -> Result<()> {
     let current = parse_semver(package.get("version"))?;
     let Some(previous) = previous_release_version(repo_path, current)? else {
@@ -294,8 +311,8 @@ fn validate_previous_release_coverage(repo_path: &Path, package: &Value) -> Resu
              \"migration\" section ({{\"format\": 1, \"supportsUpgradeFrom\": [...], \"plans\": \
              [...]}}) with a plan whose \"from\" covers {previous} and whose \"to\" is {version}. \
              `ont release` writes a generated one (\"generated\": true) when the section is \
-             missing. Without it the app upgrades an installed {previous} by re-applying every \
-             data file, and no release tests that upgrade."
+             missing. Without it the app refuses to upgrade an installed {previous} (\"no \
+             migration plan matches installed version\"), and no release tests that upgrade."
         )));
     };
 
@@ -532,6 +549,9 @@ mod tests {
             "name": "custom",
             "displayName": "custom",
             "version": "1.0.0",
+            "description": "A fixture package.",
+            "source": "https://example.com/ontology-custom",
+            "prefix": "custom",
             "scripts": {
                 "refresh:package-contract": "node refresh.mjs",
                 "validate:bootstrap": "node validate-bootstrap.mjs",
@@ -604,6 +624,24 @@ mod tests {
     }
 
     #[test]
+    fn requires_the_fields_the_app_reads() {
+        for field in ["description", "prefix", "source"] {
+            let mut package = base_package();
+            object_mut(&mut package).remove(field);
+            let dir = create_fixture(&package, &[]);
+            match validate_package_contract(dir.path()) {
+                Err(Error::Version(message)) => assert!(
+                    message.starts_with(&format!(
+                        "package.json '{field}' must be a non-empty string"
+                    )),
+                    "{message}"
+                ),
+                other => panic!("expected a refusal for {field}, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
     fn requires_competency_questions_or_a_waiver() {
         let mut package = base_package();
         object_mut(&mut package).remove("competencyQuestions");
@@ -623,9 +661,12 @@ mod tests {
             "competencyQuestions".to_string(),
             json!("competency/questions.json"),
         );
+        object_mut(&mut package).insert(
+            "sampleData".to_string(),
+            json!(["sandbox/sample-data/0001.tql"]),
+        );
         let questions = json!({
             "formatVersion": 1,
-            "fixtures": [],
             "questions": [{
                 "id": "q01", "number": 1, "group": "Things", "text": "Which things exist?",
                 "query": "queries/q01.tql"
@@ -654,6 +695,7 @@ mod tests {
                 ("queries/q01.tql", "match $x isa thing;"),
                 ("schema/stored-queries.tql", ""),
                 ("data/custom-questions.tql", ""),
+                ("sandbox/sample-data/0001.tql", "insert $x isa thing;"),
             ],
         );
         let Ok(crate::competency_questions::CompetencyDeclaration::Declared { path, file }) =
@@ -866,8 +908,8 @@ mod tests {
                  \"migration\" section ({\"format\": 1, \"supportsUpgradeFrom\": [...], \"plans\": \
                  [...]}) with a plan whose \"from\" covers 1.0.0 and whose \"to\" is 1.0.1. `ont \
                  release` writes a generated one (\"generated\": true) when the section is \
-                 missing. Without it the app upgrades an installed 1.0.0 by re-applying every \
-                 data file, and no release tests that upgrade."
+                 missing. Without it the app refuses to upgrade an installed 1.0.0 (\"no \
+                 migration plan matches installed version\"), and no release tests that upgrade."
             ),
             other => panic!("expected a missing-upgrade error, got {other:?}"),
         }

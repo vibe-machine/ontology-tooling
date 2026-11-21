@@ -47,11 +47,36 @@ Current shared command surface includes:
 
 Every package must declare the questions its model answers. In `package.json`, set
 `"competencyQuestions": "competency/questions.json"`, or `{"waived": "<reason>"}` for a package
-that deliberately has none. The questions file (`formatVersion: 1`) lists sample-data
-`fixtures` and the `questions`, each with a unique `id` and `number`, a `group`, the `text`, a
-`query` file holding exactly one read query, and optionally a `title` (short name of the query) and
-an `explanation` (one or two plain sentences on how the query answers the question). Every `.tql`
-file under `queries/` must be used by a question or listed in `package.json` `queries`.
+that deliberately has none. The questions file (`formatVersion: 1`) lists the `questions`, each
+with a unique `id` and `number`, a `group`, the `text`, a `query` file holding exactly one read
+query, and optionally a `title` (short name of the query), an `explanation` (one or two plain
+sentences on how the query answers the question) and `expectedEmpty` (the reason, when the
+question is meant to find nothing on the sample data). Every `.tql` file under `queries/` must be
+used by a question or listed in `package.json` `queries`. The old `fixtures` list is refused: the
+questions run on the package's sample data (below).
+
+### Sample data
+
+The questions run against the same records the app runs them against. The app builds a database
+`sample-<package>` from the package, its dependencies and the files `package.json` lists under
+`sampleData`, and shows a Run button on a package's questions only when that list is non-empty
+(OneWorkspace `PackageSampleDatabase.swift`, `QuestionRunModel.swift`). It applies each listed
+file as **one** write query in its own transaction, in listed order; sample data is never installed
+with the package.
+
+- Layout, as the app's Lab writes it (beads): `sandbox/sample-data/NNNN.tql`, one query per file,
+  listed in order in `sampleData`.
+- Or keep one source, `sandbox/sample-data.tql`, with queries separated by lines reading `end;`.
+  `ont prepare-package` (and so `ont release`) writes the numbered files from it, each headed
+  "Generated from sandbox/sample-data.tql", removes numbered files it no longer makes, and sets
+  `sampleData`. Edit the source, never the numbered files.
+
+`ont validate-package` refuses: a package with competency questions (not waived) and no
+`sampleData`; a `sampleData` entry listed twice, missing, or also in `schemas`, `data` or
+`assembly.loadOrder` (the app refuses these too); a file that is not one write query (an `end;`
+line, a schema query, no write stage), holds more than one `match` (later stages run once per row
+it found), or breaks the write-unit limits (50 blocks, 50,000 characters, 1000 stages); and, when
+`sandbox/sample-data.tql` exists, listed files that differ from what it generates.
 
 The app shows a package's questions only when they are installed in its database as
 `StoredQuestion` / `StoredQuery` records joined by `storedAnswer`, so the questions file is also
@@ -74,11 +99,14 @@ turned into two generated, installed files:
   in `schemas`, `data` and `assembly.loadOrder`, or when either differs from what would be
   generated.
 - `ont check-questions --repo <path>` starts a throwaway TypeDB, loads the dependencies (sibling
-  `ontology-<name>` repositories), the package's schemas and data in `assembly.loadOrder`, then the
-  fixtures, and runs each query. A question passes when its query runs and returns at least one
-  row. On success it writes `competency/last-run.json` with a digest of the questions file, query
-  files, fixtures, and the package's own schema and data files (`package.json` `schemas[].file`
-  and `data`), so a schema or data change also calls for a fresh run. Set `TYPEDB_BIN` or pass `--typedb-bin` to choose the TypeDB executable.
+  `ontology-<name>` repositories), the package's schemas and data in `assembly.loadOrder`, then each
+  `sampleData` file as one write query, and runs each query. A question passes when its query runs
+  and returns at least one row; a question that returns no rows fails ("add sample records it
+  should find, or mark the question expectedEmpty with the reason"); one marked `expectedEmpty`
+  passes only with no rows. Each line prints the row count; read them. On success it writes
+  `competency/last-run.json` with a digest of the questions file, the sample-data files, query
+  files, and the package's own schema and data files (`package.json` `schemas[].file` and
+  `data`), so a schema, data or sample change also calls for a fresh run. Set `TYPEDB_BIN` or pass `--typedb-bin` to choose the TypeDB executable.
   The run also confirms that the package installs exactly one `StoredQuestion` per question, each
   answered by a `StoredQuery`.
 - `ont check-questions --repo <path> --write-generated` (alias `--write-doc`) writes
@@ -101,6 +129,11 @@ Every `ont validate-package` (and so `ont release`, which validates after it ref
   `moduleVersionKey` and its `manifestPath` must all name the package version. `ont
   prepare-package` re-splits listed apply units from their source file, so units never keep an
   old manifest or old contents.
+- **Fields the app needs**: `description` and `prefix` (the app cannot read a `package.json`
+  without them) and `source` (the app finds the installed version by it and cannot upgrade
+  without it).
+- **Sample data the app could not load**, and competency questions without sample data (see
+  [Sample data](#sample-data)).
 - **Listed files that do not exist**: any path in `package.json` (`queries`,
   `assembly.generatedArtifacts`, migration units, besides schemas, data, manifests and the load
   order) or in the manifest (`artifacts`, `upstream.sourceArtifacts`).
@@ -110,7 +143,8 @@ declares, and additionally refuses:
 
 - **Content changed under a released version.** When tag `v<version>` exists, the shipped content
   at `HEAD` (`package.json`, `schema/`, `data/`, `queries/`, `competency/`, `fixtures/`,
-  `manifests/`, `migrations/`, `generated/apply-units/` and every path `package.json` lists) must
+  `sandbox/`, `manifests/`, `migrations/`, `generated/apply-units/` and every path `package.json`
+  lists, `sampleData` included) must
   equal the tag. `HEAD` at the tag, or a docs-only change, passes.
 - **Hand edits after the build**: every file whose hash the manifest records must still match it.
 - **A stale run record**: `competency/last-run.json` must name the package version.
@@ -151,7 +185,10 @@ release. It runs, stopping at the first failure and printing one line per stage 
 It ends with `PASS` or `FAIL`. On `PASS` it prints the one check it cannot run, because it needs
 the app's code: the app's own install and upgrade, in OneWorkspace,
 `mise run check-package-release <candidate> <dependency checkouts…>` (the exact command is
-printed; it accepts `--quick`, `--install-only` and `--time-limit <seconds>`). `ont release`
+printed; it accepts `--quick`, `--install-only`, `--time-limit <seconds>` and
+`--from-backup [backup folder]`, which also restores a copy of the app's newest backup of
+`knowledge` (or the one given) into the throwaway server and upgrades it; the live server is never
+contacted). `ont release`
 runs `qualify` in full on the bumped tree before it commits and tags.
 Package Node scripts keep working; new checks go into `ont`, not into each package.
 

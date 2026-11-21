@@ -16,7 +16,8 @@ use super::{emit_json, Cli, Format};
 
 #[derive(Args, Debug, Clone)]
 pub struct CheckQuestionsArgs {
-    /// Path to the ontology repository whose competency questions to run.
+    /// Path to the ontology repository whose competency questions to run
+    /// against its sample data (package.json `sampleData`).
     #[arg(long)]
     pub repo: PathBuf,
 
@@ -226,6 +227,7 @@ pub(crate) async fn run_and_record(
                 id: outcome.id.clone(),
                 number: outcome.number,
                 rows: outcome.rows,
+                expected_empty: outcome.expected_empty,
             })
             .collect(),
     };
@@ -242,10 +244,10 @@ fn result_line(outcome: &QuestionOutcome) -> String {
         "{:>3}  {verdict}  {:>5} rows  {}",
         outcome.number, outcome.rows, outcome.id
     );
-    if let Some(error) = &outcome.error {
-        line.push_str(&format!("  error: {}", error.replace('\n', " ")));
-    } else if outcome.rows == 0 {
-        line.push_str("  error: the query returned no rows");
+    if let Some(failure) = outcome.failure() {
+        line.push_str(&format!("  error: {failure}"));
+    } else if outcome.expected_empty {
+        line.push_str("  (expected empty)");
     }
     line
 }

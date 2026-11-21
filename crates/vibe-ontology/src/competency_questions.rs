@@ -8,9 +8,12 @@
 //! - `"competencyQuestions": {"waived": "<non-empty reason>"}` — for a package
 //!   that deliberately has none.
 //!
-//! The questions file (format version 1) lists sample-data `fixtures` and the
-//! `questions`, each with an `id`, `number`, `group`, `text` and a `query` file
-//! holding exactly one read query.
+//! The questions file (format version 1) lists the `questions`, each with an
+//! `id`, `number`, `group`, `text` and a `query` file holding exactly one read
+//! query. The questions run against the package's sample data: the files
+//! `package.json` lists under `sampleData`, the same files the app loads into a
+//! package's sample database (see [`crate::sample_data`]). A question that is
+//! meant to find nothing on that data says so with `expectedEmpty` and a reason.
 //!
 //! This module owns three things:
 //!
@@ -18,7 +21,8 @@
 //!    validation;
 //! 2. the **run** ([`run_competency_questions`]), which loads the package and its
 //!    dependencies into a throwaway TypeDB and runs every question's query; a
-//!    question passes when its query runs and returns at least one row;
+//!    question passes when its query runs and returns at least one row (or, when
+//!    marked `expectedEmpty`, exactly none);
 //! 3. the **release gate** ([`check_release_gate`]): `competency/last-run.json`
 //!    must exist and its `questionsDigest` must match the current files.
 
@@ -65,7 +69,6 @@ pub enum CompetencyDeclaration {
 /// A parsed, validated questions file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QuestionsFile {
-    pub fixtures: Vec<String>,
     pub questions: Vec<Question>,
 }
 
@@ -81,6 +84,9 @@ pub struct Question {
     pub title: Option<String>,
     /// One or two plain sentences on how the query answers the question.
     pub explanation: Option<String>,
+    /// Why this question finds nothing on the sample data, when that is
+    /// intended. Such a question passes only with zero rows.
+    pub expected_empty: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -88,13 +94,15 @@ pub struct Question {
 // ---------------------------------------------------------------------------
 
 /// Validates the package's competency-question declaration and, when questions
-/// are declared, the questions file, its fixtures and query files, the
-/// `queries/` directory (no orphans), and the rendered document (when present).
+/// are declared, the questions file and its query files, the `queries/`
+/// directory (no orphans), and the rendered document (when present); and the
+/// package's sample data, which declared questions require.
 pub fn validate_competency_questions(
     repo_path: &Path,
     package: &Value,
 ) -> Result<CompetencyDeclaration> {
     let declaration = read_declaration(repo_path, package)?;
+    crate::sample_data::validate_sample_data(repo_path, package, &declaration)?;
     if let CompetencyDeclaration::Declared { path, file } = &declaration {
         validate_no_orphan_queries(repo_path, package, file)?;
         validate_rendered_doc(repo_path, package, path, file)?;
@@ -157,30 +165,15 @@ fn read_questions_file(repo_path: &Path, path: &str) -> Result<QuestionsFile> {
         )));
     }
 
-    let fixtures = match object.get("fixtures") {
-        None => Vec::new(),
-        Some(Value::Array(entries)) => {
-            let mut fixtures = Vec::new();
-            for (index, entry) in entries.iter().enumerate() {
-                let Some(fixture) = entry.as_str().filter(|value| !value.trim().is_empty()) else {
-                    return Err(invalid(format!(
-                        "{path}: fixture {} must be a non-empty path",
-                        index + 1
-                    )));
-                };
-                if !joined(repo_path, fixture).is_file() {
-                    return Err(invalid(format!("{path}: fixture not found: {fixture}")));
-                }
-                fixtures.push(fixture.to_string());
-            }
-            fixtures
-        }
-        Some(_) => {
-            return Err(invalid(format!(
-                "{path}: 'fixtures' must be an array of paths"
-            )))
-        }
-    };
+    if object.contains_key("fixtures") {
+        return Err(invalid(format!(
+            "{path}: 'fixtures' is no longer read. The questions run against the package's sample \
+             data, the files the app loads: move the fixture queries to sandbox/sample-data/NNNN.tql \
+             (one query per file) or to one sandbox/sample-data.tql (queries separated by `end;` \
+             lines, split by `ont prepare-package`), list them in package.json 'sampleData', and \
+             remove 'fixtures'"
+        )));
+    }
 
     let Some(entries) = object
         .get("questions")
@@ -267,6 +260,7 @@ fn read_questions_file(repo_path: &Path, path: &str) -> Result<QuestionsFile> {
         };
         let title = optional_text("title")?;
         let explanation = optional_text("explanation")?;
+        let expected_empty = optional_text("expectedEmpty")?;
         questions.push(Question {
             id: id.to_string(),
             number,
@@ -275,13 +269,11 @@ fn read_questions_file(repo_path: &Path, path: &str) -> Result<QuestionsFile> {
             query: query.to_string(),
             title,
             explanation,
+            expected_empty,
         });
     }
 
-    Ok(QuestionsFile {
-        fixtures,
-        questions,
-    })
+    Ok(QuestionsFile { questions })
 }
 
 fn non_empty(value: Option<&Value>) -> Option<&str> {
@@ -537,8 +529,8 @@ pub fn write_questions_doc(
 // ---------------------------------------------------------------------------
 
 /// SHA-256 over everything a question's answer depends on: the questions file,
-/// every fixture, every query file, and the package's own schema and data files.
-/// Order: the questions file, then fixtures in declared order, then query files
+/// every sample-data file, every query file, and the package's own schema and
+/// data files. Order: the questions file, then `sampleData` in listed order, then query files
 /// sorted by path (each once), then `package.json` `schemas[].file` in listed
 /// order, then `package.json` `data` in listed order. Each file contributes
 /// `path NUL contents NUL`. A change to any of them makes the last run stale.
@@ -549,7 +541,7 @@ pub fn questions_digest(
     file: &QuestionsFile,
 ) -> Result<String> {
     let mut paths = vec![questions_path.to_string()];
-    paths.extend(file.fixtures.iter().cloned());
+    paths.extend(crate::sample_data::sample_data_paths(package));
     let queries: BTreeSet<&str> = file
         .questions
         .iter()
@@ -611,6 +603,9 @@ pub struct LastRunResult {
     pub id: String,
     pub number: u64,
     pub rows: usize,
+    /// Present (true) when the question is marked `expectedEmpty`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub expected_empty: bool,
 }
 
 /// Refuses a release unless the questions were run (successfully) after their
@@ -634,7 +629,7 @@ pub fn check_release_gate(repo_path: &Path, package: &Value) -> Result<()> {
     let digest = questions_digest(repo_path, package, &path, &file)?;
     if last_run.questions_digest != digest {
         return Err(invalid(format!(
-            "{LAST_RUN_PATH} is stale: the questions, queries, fixtures, schema or data changed \
+            "{LAST_RUN_PATH} is stale: the questions, queries, sample data, schema or data changed \
              after the last run; {run_hint}"
         )));
     }
@@ -687,11 +682,31 @@ pub struct QuestionOutcome {
     pub number: u64,
     pub rows: usize,
     pub error: Option<String>,
+    /// The question is marked `expectedEmpty`: it passes only with zero rows.
+    pub expected_empty: bool,
 }
 
 impl QuestionOutcome {
     pub fn passed(&self) -> bool {
-        self.error.is_none() && self.rows > 0
+        self.error.is_none() && (self.rows > 0) != self.expected_empty
+    }
+
+    /// Why the question failed, when it did.
+    pub fn failure(&self) -> Option<String> {
+        if let Some(error) = &self.error {
+            return Some(error.replace('\n', " "));
+        }
+        match (self.expected_empty, self.rows) {
+            (false, 0) => Some(
+                "the query returned no rows on the sample data; add sample records it should \
+                 find, or mark the question \"expectedEmpty\" with the reason"
+                    .to_string(),
+            ),
+            (true, rows) if rows > 0 => Some(format!(
+                "marked expectedEmpty but returned {rows} rows; remove the mark"
+            )),
+            _ => None,
+        }
     }
 }
 
@@ -788,12 +803,15 @@ fn read_package_json(package_root: &Path) -> Result<Value> {
 pub type Progress<'a> = &'a mut dyn FnMut(&str);
 
 /// Loads the package and its dependencies into `database` on `target`, then the
-/// fixtures, then runs every question's query in a read transaction.
+/// package's sample data (`sampleData`), then runs every question's query in a
+/// read transaction.
 ///
 /// Loading: every package's schema assets (its `schemas[].file` entries, in
 /// `assembly.loadOrder`) go in one schema transaction validated at commit,
 /// dependencies first; then every other `.tql` load-order asset is applied as a
-/// write, in order; then the fixtures, in order. A load failure is an error; a
+/// write, in order; then each `sampleData` file, in listed order, as one write
+/// query in its own transaction, as the app builds `sample-<package>`. A load
+/// failure is an error; a
 /// query failure is recorded on that question's outcome.
 pub async fn run_competency_questions(
     target: &TypeDbTarget,
@@ -843,8 +861,13 @@ pub async fn run_competency_questions(
             }
         }
     }
-    for fixture in &file.fixtures {
-        writes.push((format!("fixture:{fixture}"), joined(repo_path, fixture)));
+    let sample_files = ordered
+        .last()
+        .map(|package| crate::sample_data::sample_data_paths(&package.manifest))
+        .unwrap_or_default();
+    let sample_count = sample_files.len();
+    for sample in &sample_files {
+        writes.push((format!("sample:{sample}"), joined(repo_path, sample)));
     }
 
     create_database(target, database).await?;
@@ -852,7 +875,10 @@ pub async fn run_competency_questions(
     apply_schema(target, database, &schema_blobs)
         .await
         .map_err(|error| invalid(format!("schema load failed: {error}")))?;
-    progress(&format!("loading {} data and fixture files", writes.len()));
+    progress(&format!(
+        "loading {} data files and {sample_count} sample-data files",
+        writes.len() - sample_count
+    ));
     for (label, path) in &writes {
         let text = read_text(path)?;
         if text.trim().is_empty() {
@@ -873,12 +899,14 @@ pub async fn run_competency_questions(
                 number: question.number,
                 rows,
                 error: None,
+                expected_empty: question.expected_empty.is_some(),
             },
             Err(error) => QuestionOutcome {
                 id: question.id.clone(),
                 number: question.number,
                 rows: 0,
                 error: Some(error),
+                expected_empty: question.expected_empty.is_some(),
             },
         };
         outcomes.push(outcome);
@@ -1061,7 +1089,6 @@ mod tests {
     fn questions_json() -> Value {
         json!({
             "formatVersion": 1,
-            "fixtures": ["fixtures/sample.tql"],
             "questions": [
                 {"id": "q07", "number": 7, "group": "What each source says",
                  "text": "Which distinctions does a source draw?", "query": "queries/q07.tql"},
@@ -1084,7 +1111,8 @@ mod tests {
             ],
             "data": ["data/seed.tql", "data/custom-questions.tql"],
             "queries": [],
-            "competencyQuestions": "competency/questions.json"
+            "competencyQuestions": "competency/questions.json",
+            "sampleData": ["sandbox/sample-data/0001.tql"]
         })
     }
 
@@ -1093,7 +1121,11 @@ mod tests {
     fn fixture(questions: Option<&Value>) -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
-        write(root, "fixtures/sample.tql", "insert $x isa thing;\n");
+        write(
+            root,
+            "sandbox/sample-data/0001.tql",
+            "insert $x isa thing;\n",
+        );
         write(root, "schema/custom.tql", "define\nentity thing;\n");
         write(root, "data/seed.tql", "insert $x isa thing;\n");
         write(root, "queries/q07.tql", QUERY);
@@ -1139,7 +1171,6 @@ mod tests {
             panic!("expected declared questions");
         };
         assert_eq!(path, "competency/questions.json");
-        assert_eq!(file.fixtures, vec!["fixtures/sample.tql"]);
         assert_eq!(file.questions.len(), 3);
         assert_eq!(file.questions[0].id, "q07");
     }
@@ -1163,6 +1194,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut package = package();
         package[FIELD] = json!({"waived": "upper ontology; questions live in dependents"});
+        package.as_object_mut().unwrap().remove("sampleData");
         assert_eq!(
             validate_competency_questions(dir.path(), &package).unwrap(),
             CompetencyDeclaration::Waived {
@@ -1206,14 +1238,71 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_missing_fixture() {
+    fn refuses_fixtures_in_the_questions_file() {
         let mut questions = questions_json();
-        questions["fixtures"] = json!(["fixtures/absent.tql"]);
+        questions["fixtures"] = json!(["fixtures/sample.tql"]);
         let dir = fixture(Some(&questions));
+        match validate_competency_questions(dir.path(), &package()) {
+            Err(Error::Version(message)) => assert!(
+                message.starts_with("competency/questions.json: 'fixtures' is no longer read"),
+                "{message}"
+            ),
+            other => panic!("expected a fixtures refusal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn declared_questions_need_sample_data() {
+        let dir = fixture(None);
+        let mut package = package();
+        package.as_object_mut().unwrap().remove("sampleData");
+        match validate_competency_questions(dir.path(), &package) {
+            Err(Error::Version(message)) => assert!(
+                message
+                    .starts_with("package.json declares competency questions but no 'sampleData'"),
+                "{message}"
+            ),
+            other => panic!("expected a sample-data refusal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn expected_empty_questions_pass_only_with_no_rows() {
+        let questions = with_question_field("expectedEmpty", json!("nothing is unreconciled"));
+        let dir = fixture(Some(&questions));
+        let CompetencyDeclaration::Declared { file, .. } =
+            validate_competency_questions(dir.path(), &package()).unwrap()
+        else {
+            panic!("expected declared questions");
+        };
+        assert_eq!(
+            file.questions[0].expected_empty.as_deref(),
+            Some("nothing is unreconciled")
+        );
+        let outcome = |rows, expected_empty| QuestionOutcome {
+            id: "q07".to_string(),
+            number: 7,
+            rows,
+            error: None,
+            expected_empty,
+        };
+        assert!(outcome(3, false).passed());
+        assert!(!outcome(0, false).passed());
+        assert!(outcome(0, false)
+            .failure()
+            .unwrap()
+            .starts_with("the query returned no rows on the sample data"));
+        assert!(outcome(0, true).passed());
+        assert_eq!(
+            outcome(2, true).failure().unwrap(),
+            "marked expectedEmpty but returned 2 rows; remove the mark"
+        );
+        let empty_reason = with_question_field("expectedEmpty", json!(" "));
+        let dir = fixture(Some(&empty_reason));
         assert_message(
             &dir,
             &package(),
-            "competency/questions.json: fixture not found: fixtures/absent.tql",
+            "competency/questions.json: question 'q07' 'expectedEmpty' must be a non-empty string when present",
         );
     }
 
@@ -1434,8 +1523,8 @@ mod tests {
             check_release_gate(dir.path(), &package())
                 .unwrap_err()
                 .to_string(),
-            "version error: competency/last-run.json is stale: the questions, queries, fixtures, \
-             schema or data changed after the last run; run `ont check-questions --repo <repo>` \
+            "version error: competency/last-run.json is stale: the questions, queries, sample \
+             data, schema or data changed after the last run; run `ont check-questions --repo <repo>` \
              and commit competency/last-run.json"
         );
     }
@@ -1450,14 +1539,14 @@ mod tests {
     }
 
     #[test]
-    fn digest_covers_questions_queries_fixtures_schema_and_data() {
+    fn digest_covers_questions_queries_sample_data_schema_and_data() {
         let changes: &[(&str, &str)] = &[
             (
                 "competency/questions.json",
                 "{\"formatVersion\": 1, \"questions\": []}",
             ),
             ("queries/q01.tql", "match $y isa thing;\n"),
-            ("fixtures/sample.tql", "insert $y isa thing;\n"),
+            ("sandbox/sample-data/0001.tql", "insert $y isa thing;\n"),
             ("schema/custom.tql", "define\nentity other;\n"),
             ("data/seed.tql", "insert $y isa thing;\n"),
         ];

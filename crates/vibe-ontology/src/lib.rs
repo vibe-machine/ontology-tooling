@@ -25,6 +25,7 @@ pub mod package_release;
 pub mod package_validator;
 pub mod release_args;
 pub mod release_integrity;
+pub mod sample_data;
 pub mod stored_questions;
 pub mod throwaway_typedb;
 pub mod upgrade_check;

@@ -509,6 +509,7 @@ mod tests {
             query: query.to_string(),
             title: title.map(str::to_string),
             explanation: Some(format!("Reads \"things\" for {number}.")),
+            expected_empty: None,
         }
     }
 
@@ -522,7 +523,6 @@ mod tests {
         .unwrap();
         std::fs::write(dir.path().join("queries/b.tql"), "match $y isa thing;\n").unwrap();
         let file = QuestionsFile {
-            fixtures: Vec::new(),
             questions: vec![
                 question(3, Some("Which things exist?"), "queries/a.tql"),
                 question(12, Some("Which things exist"), "queries/b.tql"),

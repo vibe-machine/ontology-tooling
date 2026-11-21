@@ -1073,14 +1073,18 @@ impl<'a> PackagePreparer<'a> {
     }
 }
 
-/// Rewrites oversized executable files into generated apply units and returns
-/// the updated `package.json` value, matching `prepareExecutablePackage`.
+/// Rewrites oversized executable files into generated apply units, writes the
+/// sample-data files from `sandbox/sample-data.tql` when the package keeps one
+/// (see [`crate::sample_data`]), and returns the updated `package.json` value.
 pub fn prepare_executable_package(
     repo_path: &Path,
     options: Option<PrepareExecutablePackageOptions>,
 ) -> Result<Value> {
     let package_path = repo_path.join("package.json");
     let mut package = read_json(&package_path)?;
+    // Sample data kept as one source is split into the numbered files the app
+    // loads (one query each), and `sampleData` lists them.
+    crate::sample_data::write_units_from_source(repo_path, &mut package)?;
     // Re-split from the source files rather than copying existing units, so
     // units never keep stale headers or contents (e.g. an old manifest).
     collapse_apply_units_to_sources(repo_path, &mut package);

@@ -608,6 +608,7 @@ fn shipped_pathspecs(package: &Value) -> Vec<String> {
         "queries",
         "competency",
         "fixtures",
+        "sandbox",
         "manifests",
         "migrations",
         APPLY_UNITS_ROOT,
@@ -625,7 +626,13 @@ fn shipped_pathspecs(package: &Value) -> Vec<String> {
             paths.insert(file.to_string());
         }
     }
-    for pointer in ["/data", "/queries", "/manifests", "/assembly/loadOrder"] {
+    for pointer in [
+        "/data",
+        "/queries",
+        "/manifests",
+        "/assembly/loadOrder",
+        "/sampleData",
+    ] {
         paths.extend(
             string_array(package.pointer(pointer))
                 .into_iter()

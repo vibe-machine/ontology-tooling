@@ -9,7 +9,8 @@ use super::{emit_json, Cli, Format};
 
 #[derive(Args, Debug, Clone)]
 pub struct PreparePackageArgs {
-    /// Path to the ontology repository whose executable package to prepare.
+    /// Path to the ontology repository whose executable package to prepare
+    /// (apply units, and sandbox/sample-data/ from sandbox/sample-data.tql).
     #[arg(long)]
     pub repo: PathBuf,
 }
