@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Before changing how packages are validated or released, or releasing a package with this tooling, follow the `ontology-extend` skill (installed through `apm.yml`; refresh with `apm install`).
+
 ## Project Purpose
 
 ontology-tooling is the shared tooling hub for the `collection-vibe-machine` project. It is a **single Rust workspace** (the former Node release tooling has been fully consolidated into it):

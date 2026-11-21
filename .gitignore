@@ -22,3 +22,7 @@ target/
 # Beads / Dolt files (added by bd init)
 .beads/proxieddb/
 *.gate.lock*
+
+
+# APM dependencies
+apm_modules/

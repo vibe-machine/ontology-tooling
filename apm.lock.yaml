@@ -1,0 +1,450 @@
+lockfile_version: '1'
+apm_version: 0.36.1
+dependencies:
+- repo_url: vibe-machine/skill-cabinet
+  name: modeling
+  host: github.com
+  resolved_commit: 4b1d7194b35498e6c3a88241ff0e7addc5499aa2
+  resolved_ref: v1.6.0
+  version: unknown
+  virtual_path: skills/modeling
+  is_virtual: true
+  package_type: claude_skill
+  deployed_files:
+  - .agents/skills/modeling
+  - .agents/skills/modeling/SKILL.md
+  - .agents/skills/modeling/UPSTREAM.md
+  - .claude/skills/modeling
+  - .claude/skills/modeling/SKILL.md
+  - .claude/skills/modeling/UPSTREAM.md
+  deployed_file_hashes:
+    .agents/skills/modeling/SKILL.md: sha256:2a0bcf1b03bbb006aca3db979277b5dd70e4633dda4191e5752b7817bf7ca0d6
+    .agents/skills/modeling/UPSTREAM.md: sha256:92f137c519acd296f1b25df9cf16ff7c60c80fa209f279cf1bde70fcb39e0277
+    .claude/skills/modeling/SKILL.md: sha256:2a0bcf1b03bbb006aca3db979277b5dd70e4633dda4191e5752b7817bf7ca0d6
+    .claude/skills/modeling/UPSTREAM.md: sha256:92f137c519acd296f1b25df9cf16ff7c60c80fa209f279cf1bde70fcb39e0277
+  content_hash: sha256:8f15244057732ab204047c2f8f5c934ca9fbf95a3c4a1fadf63e76a9373b492a
+- repo_url: vibe-machine/skill-cabinet
+  name: ontology-extend
+  host: github.com
+  resolved_commit: 419662b9a90f60126d20402f8dcb8f23188a78dc
+  resolved_ref: v1.7.0
+  version: unknown
+  virtual_path: skills/ontology-extend
+  is_virtual: true
+  package_type: claude_skill
+  deployed_files:
+  - .agents/skills/ontology-extend
+  - .agents/skills/ontology-extend/SKILL.md
+  - .agents/skills/ontology-extend/references/app-install-and-upgrade.md
+  - .agents/skills/ontology-extend/references/competency-questions.md
+  - .agents/skills/ontology-extend/references/gist-relations.md
+  - .agents/skills/ontology-extend/references/gist-types.md
+  - .agents/skills/ontology-extend/references/schema-patterns.md
+  - .agents/skills/ontology-extend/references/typedb-limits-and-traps.md
+  - .claude/skills/ontology-extend
+  - .claude/skills/ontology-extend/SKILL.md
+  - .claude/skills/ontology-extend/references/app-install-and-upgrade.md
+  - .claude/skills/ontology-extend/references/competency-questions.md
+  - .claude/skills/ontology-extend/references/gist-relations.md
+  - .claude/skills/ontology-extend/references/gist-types.md
+  - .claude/skills/ontology-extend/references/schema-patterns.md
+  - .claude/skills/ontology-extend/references/typedb-limits-and-traps.md
+  deployed_file_hashes:
+    .agents/skills/ontology-extend/SKILL.md: sha256:dc6a940b0b8a00fb7f29eec44d1a92d187534eb135aa3f25db65a3942da88203
+    .agents/skills/ontology-extend/references/app-install-and-upgrade.md: sha256:93224b98c4b31d949e6f209d5255e48e9eeec6426a748bde03225b93b58cdfcf
+    .agents/skills/ontology-extend/references/competency-questions.md: sha256:89ca19c125923541028ac7ee37134fb446d56bd0658749eec95b9af0e08de3d6
+    .agents/skills/ontology-extend/references/gist-relations.md: sha256:61759870905254a4ae1dd182eb45ad8c2eb801ca6616a895b75ce36244192ac4
+    .agents/skills/ontology-extend/references/gist-types.md: sha256:435c5c557ea2ad43654005d45f9f96ca8460102cf91fe3ebad782d881ef99b52
+    .agents/skills/ontology-extend/references/schema-patterns.md: sha256:ece4be565a2300367c1e653b5c6d98cd1cecdc4fad5d859b7e78de4b882a8bd3
+    .agents/skills/ontology-extend/references/typedb-limits-and-traps.md: sha256:98e31b9775da0eff12bc67430db07b6d6368723a84558bd57522094a85c7cbea
+    .claude/skills/ontology-extend/SKILL.md: sha256:dc6a940b0b8a00fb7f29eec44d1a92d187534eb135aa3f25db65a3942da88203
+    .claude/skills/ontology-extend/references/app-install-and-upgrade.md: sha256:93224b98c4b31d949e6f209d5255e48e9eeec6426a748bde03225b93b58cdfcf
+    .claude/skills/ontology-extend/references/competency-questions.md: sha256:89ca19c125923541028ac7ee37134fb446d56bd0658749eec95b9af0e08de3d6
+    .claude/skills/ontology-extend/references/gist-relations.md: sha256:61759870905254a4ae1dd182eb45ad8c2eb801ca6616a895b75ce36244192ac4
+    .claude/skills/ontology-extend/references/gist-types.md: sha256:435c5c557ea2ad43654005d45f9f96ca8460102cf91fe3ebad782d881ef99b52
+    .claude/skills/ontology-extend/references/schema-patterns.md: sha256:ece4be565a2300367c1e653b5c6d98cd1cecdc4fad5d859b7e78de4b882a8bd3
+    .claude/skills/ontology-extend/references/typedb-limits-and-traps.md: sha256:98e31b9775da0eff12bc67430db07b6d6368723a84558bd57522094a85c7cbea
+  content_hash: sha256:42448942a9b818914b3691b92f60cd795f4172d3f65a5979520b4890adc512ef
+- repo_url: vibe-machine/skill-cabinet
+  name: ontology-repo-layout
+  host: github.com
+  resolved_commit: 9eb7ba85dfad48d1d935143f2e3bd0e30eb0bc76
+  resolved_ref: v0.4.0
+  version: unknown
+  virtual_path: skills/ontology-repo-layout
+  is_virtual: true
+  package_type: claude_skill
+  deployed_files:
+  - .agents/skills/ontology-repo-layout
+  - .agents/skills/ontology-repo-layout/SKILL.md
+  - .claude/skills/ontology-repo-layout
+  - .claude/skills/ontology-repo-layout/SKILL.md
+  deployed_file_hashes:
+    .agents/skills/ontology-repo-layout/SKILL.md: sha256:f181fa37ef1a1cfb9afce697a77de7d933782baafb6d989ca8ddda8c87d826d6
+    .claude/skills/ontology-repo-layout/SKILL.md: sha256:f181fa37ef1a1cfb9afce697a77de7d933782baafb6d989ca8ddda8c87d826d6
+  content_hash: sha256:d4bfe5e527f58b62c8f35e582e7a920fa8e8f81d8ba95b5d315cab2a7ee1dfaf
+- repo_url: vibe-machine/skill-cabinet
+  name: typedb
+  host: github.com
+  resolved_commit: 9eb7ba85dfad48d1d935143f2e3bd0e30eb0bc76
+  resolved_ref: v0.4.0
+  version: unknown
+  virtual_path: skills/typedb
+  is_virtual: true
+  package_type: claude_skill
+  deployed_files:
+  - .agents/skills/typedb
+  - .agents/skills/typedb/SKILL.md
+  - .claude/skills/typedb
+  - .claude/skills/typedb/SKILL.md
+  deployed_file_hashes:
+    .agents/skills/typedb/SKILL.md: sha256:a6deb8c61039425746e4b4eb7a6a16029f1f1bb781dae0ce6d83fb4d1acd0689
+    .claude/skills/typedb/SKILL.md: sha256:a6deb8c61039425746e4b4eb7a6a16029f1f1bb781dae0ce6d83fb4d1acd0689
+  content_hash: sha256:61cc143a6d20310cd70ce1944eb6f206cdd7d62d6b3cd7bc83c9202002590982
+- repo_url: vibe-machine/skill-cabinet
+  name: typeql
+  host: github.com
+  resolved_commit: 4b1d7194b35498e6c3a88241ff0e7addc5499aa2
+  resolved_ref: v1.6.0
+  version: unknown
+  virtual_path: skills/typeql
+  is_virtual: true
+  package_type: claude_skill
+  deployed_files:
+  - .agents/skills/typeql
+  - .agents/skills/typeql/SKILL.md
+  - .agents/skills/typeql/UPSTREAM.md
+  - .claude/skills/typeql
+  - .claude/skills/typeql/SKILL.md
+  - .claude/skills/typeql/UPSTREAM.md
+  deployed_file_hashes:
+    .agents/skills/typeql/SKILL.md: sha256:d8c245ff94023085d9c668b7c1d193b22264437788b0dc6fedd7c903708598f6
+    .agents/skills/typeql/UPSTREAM.md: sha256:f8a93f5e8197e7602001a90b33f59f2010f38a3cd4b62e493698a2a86e5893de
+    .claude/skills/typeql/SKILL.md: sha256:d8c245ff94023085d9c668b7c1d193b22264437788b0dc6fedd7c903708598f6
+    .claude/skills/typeql/UPSTREAM.md: sha256:f8a93f5e8197e7602001a90b33f59f2010f38a3cd4b62e493698a2a86e5893de
+  content_hash: sha256:2cec7fa6b2703dbe14ae8dc5a636025f37489ebf604d6a58182a2ce7a791e030
+deployments:
+- kind: project-relative
+  target: agent-skills
+  value: .agents/skills/modeling
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/modeling
+  active_owner: vibe-machine/skill-cabinet/skills/modeling
+  content_hash: null
+- kind: project-relative
+  target: agent-skills
+  value: .agents/skills/modeling/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/modeling
+  active_owner: vibe-machine/skill-cabinet/skills/modeling
+  content_hash: sha256:2a0bcf1b03bbb006aca3db979277b5dd70e4633dda4191e5752b7817bf7ca0d6
+- kind: project-relative
+  target: agent-skills
+  value: .agents/skills/modeling/UPSTREAM.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/modeling
+  active_owner: vibe-machine/skill-cabinet/skills/modeling
+  content_hash: sha256:92f137c519acd296f1b25df9cf16ff7c60c80fa209f279cf1bde70fcb39e0277
+- kind: project-relative
+  target: agent-skills
+  value: .agents/skills/ontology-extend
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/ontology-extend
+  active_owner: vibe-machine/skill-cabinet/skills/ontology-extend
+  content_hash: null
+- kind: project-relative
+  target: agent-skills
+  value: .agents/skills/ontology-extend/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/ontology-extend
+  active_owner: vibe-machine/skill-cabinet/skills/ontology-extend
+  content_hash: sha256:dc6a940b0b8a00fb7f29eec44d1a92d187534eb135aa3f25db65a3942da88203
+- kind: project-relative
+  target: agent-skills
+  value: .agents/skills/ontology-extend/references/app-install-and-upgrade.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/ontology-extend
+  active_owner: vibe-machine/skill-cabinet/skills/ontology-extend
+  content_hash: sha256:93224b98c4b31d949e6f209d5255e48e9eeec6426a748bde03225b93b58cdfcf
+- kind: project-relative
+  target: agent-skills
+  value: .agents/skills/ontology-extend/references/competency-questions.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/ontology-extend
+  active_owner: vibe-machine/skill-cabinet/skills/ontology-extend
+  content_hash: sha256:89ca19c125923541028ac7ee37134fb446d56bd0658749eec95b9af0e08de3d6
+- kind: project-relative
+  target: agent-skills
+  value: .agents/skills/ontology-extend/references/gist-relations.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/ontology-extend
+  active_owner: vibe-machine/skill-cabinet/skills/ontology-extend
+  content_hash: sha256:61759870905254a4ae1dd182eb45ad8c2eb801ca6616a895b75ce36244192ac4
+- kind: project-relative
+  target: agent-skills
+  value: .agents/skills/ontology-extend/references/gist-types.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/ontology-extend
+  active_owner: vibe-machine/skill-cabinet/skills/ontology-extend
+  content_hash: sha256:435c5c557ea2ad43654005d45f9f96ca8460102cf91fe3ebad782d881ef99b52
+- kind: project-relative
+  target: agent-skills
+  value: .agents/skills/ontology-extend/references/schema-patterns.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/ontology-extend
+  active_owner: vibe-machine/skill-cabinet/skills/ontology-extend
+  content_hash: sha256:ece4be565a2300367c1e653b5c6d98cd1cecdc4fad5d859b7e78de4b882a8bd3
+- kind: project-relative
+  target: agent-skills
+  value: .agents/skills/ontology-extend/references/typedb-limits-and-traps.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/ontology-extend
+  active_owner: vibe-machine/skill-cabinet/skills/ontology-extend
+  content_hash: sha256:98e31b9775da0eff12bc67430db07b6d6368723a84558bd57522094a85c7cbea
+- kind: project-relative
+  target: agent-skills
+  value: .agents/skills/ontology-repo-layout
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/ontology-repo-layout
+  active_owner: vibe-machine/skill-cabinet/skills/ontology-repo-layout
+  content_hash: null
+- kind: project-relative
+  target: agent-skills
+  value: .agents/skills/ontology-repo-layout/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/ontology-repo-layout
+  active_owner: vibe-machine/skill-cabinet/skills/ontology-repo-layout
+  content_hash: sha256:f181fa37ef1a1cfb9afce697a77de7d933782baafb6d989ca8ddda8c87d826d6
+- kind: project-relative
+  target: agent-skills
+  value: .agents/skills/typedb
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/typedb
+  active_owner: vibe-machine/skill-cabinet/skills/typedb
+  content_hash: null
+- kind: project-relative
+  target: agent-skills
+  value: .agents/skills/typedb/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/typedb
+  active_owner: vibe-machine/skill-cabinet/skills/typedb
+  content_hash: sha256:a6deb8c61039425746e4b4eb7a6a16029f1f1bb781dae0ce6d83fb4d1acd0689
+- kind: project-relative
+  target: agent-skills
+  value: .agents/skills/typeql
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/typeql
+  active_owner: vibe-machine/skill-cabinet/skills/typeql
+  content_hash: null
+- kind: project-relative
+  target: agent-skills
+  value: .agents/skills/typeql/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/typeql
+  active_owner: vibe-machine/skill-cabinet/skills/typeql
+  content_hash: sha256:d8c245ff94023085d9c668b7c1d193b22264437788b0dc6fedd7c903708598f6
+- kind: project-relative
+  target: agent-skills
+  value: .agents/skills/typeql/UPSTREAM.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/typeql
+  active_owner: vibe-machine/skill-cabinet/skills/typeql
+  content_hash: sha256:f8a93f5e8197e7602001a90b33f59f2010f38a3cd4b62e493698a2a86e5893de
+- kind: project-relative
+  target: claude
+  value: .claude/skills/modeling
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/modeling
+  active_owner: vibe-machine/skill-cabinet/skills/modeling
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/modeling/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/modeling
+  active_owner: vibe-machine/skill-cabinet/skills/modeling
+  content_hash: sha256:2a0bcf1b03bbb006aca3db979277b5dd70e4633dda4191e5752b7817bf7ca0d6
+- kind: project-relative
+  target: claude
+  value: .claude/skills/modeling/UPSTREAM.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/modeling
+  active_owner: vibe-machine/skill-cabinet/skills/modeling
+  content_hash: sha256:92f137c519acd296f1b25df9cf16ff7c60c80fa209f279cf1bde70fcb39e0277
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ontology-extend
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/ontology-extend
+  active_owner: vibe-machine/skill-cabinet/skills/ontology-extend
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ontology-extend/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/ontology-extend
+  active_owner: vibe-machine/skill-cabinet/skills/ontology-extend
+  content_hash: sha256:dc6a940b0b8a00fb7f29eec44d1a92d187534eb135aa3f25db65a3942da88203
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ontology-extend/references/app-install-and-upgrade.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/ontology-extend
+  active_owner: vibe-machine/skill-cabinet/skills/ontology-extend
+  content_hash: sha256:93224b98c4b31d949e6f209d5255e48e9eeec6426a748bde03225b93b58cdfcf
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ontology-extend/references/competency-questions.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/ontology-extend
+  active_owner: vibe-machine/skill-cabinet/skills/ontology-extend
+  content_hash: sha256:89ca19c125923541028ac7ee37134fb446d56bd0658749eec95b9af0e08de3d6
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ontology-extend/references/gist-relations.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/ontology-extend
+  active_owner: vibe-machine/skill-cabinet/skills/ontology-extend
+  content_hash: sha256:61759870905254a4ae1dd182eb45ad8c2eb801ca6616a895b75ce36244192ac4
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ontology-extend/references/gist-types.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/ontology-extend
+  active_owner: vibe-machine/skill-cabinet/skills/ontology-extend
+  content_hash: sha256:435c5c557ea2ad43654005d45f9f96ca8460102cf91fe3ebad782d881ef99b52
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ontology-extend/references/schema-patterns.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/ontology-extend
+  active_owner: vibe-machine/skill-cabinet/skills/ontology-extend
+  content_hash: sha256:ece4be565a2300367c1e653b5c6d98cd1cecdc4fad5d859b7e78de4b882a8bd3
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ontology-extend/references/typedb-limits-and-traps.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/ontology-extend
+  active_owner: vibe-machine/skill-cabinet/skills/ontology-extend
+  content_hash: sha256:98e31b9775da0eff12bc67430db07b6d6368723a84558bd57522094a85c7cbea
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ontology-repo-layout
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/ontology-repo-layout
+  active_owner: vibe-machine/skill-cabinet/skills/ontology-repo-layout
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ontology-repo-layout/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/ontology-repo-layout
+  active_owner: vibe-machine/skill-cabinet/skills/ontology-repo-layout
+  content_hash: sha256:f181fa37ef1a1cfb9afce697a77de7d933782baafb6d989ca8ddda8c87d826d6
+- kind: project-relative
+  target: claude
+  value: .claude/skills/typedb
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/typedb
+  active_owner: vibe-machine/skill-cabinet/skills/typedb
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/typedb/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/typedb
+  active_owner: vibe-machine/skill-cabinet/skills/typedb
+  content_hash: sha256:a6deb8c61039425746e4b4eb7a6a16029f1f1bb781dae0ce6d83fb4d1acd0689
+- kind: project-relative
+  target: claude
+  value: .claude/skills/typeql
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/typeql
+  active_owner: vibe-machine/skill-cabinet/skills/typeql
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/typeql/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/typeql
+  active_owner: vibe-machine/skill-cabinet/skills/typeql
+  content_hash: sha256:d8c245ff94023085d9c668b7c1d193b22264437788b0dc6fedd7c903708598f6
+- kind: project-relative
+  target: claude
+  value: .claude/skills/typeql/UPSTREAM.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/typeql
+  active_owner: vibe-machine/skill-cabinet/skills/typeql
+  content_hash: sha256:f8a93f5e8197e7602001a90b33f59f2010f38a3cd4b62e493698a2a86e5893de
