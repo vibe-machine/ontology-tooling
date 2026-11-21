@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# The single entrypoint to the ont CLI, for operators, mise tasks and the
+# ontology repositories' npm scripts (called by path, e.g.
+# `../ontology-tooling/bin/ont check-upgrade --repo .`).
+#
+# It never runs a stale binary: every call first asks cargo to bring the
+# release build up to date (cargo's own check; a no-op build takes well under
+# a second), then runs target/release/ont. If cargo cannot build, it refuses.
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+binary="$root/target/release/ont"
+
+# The rustup proxy honours rust-toolchain.toml; Homebrew's cargo does not.
+cargo="$HOME/.cargo/bin/cargo"
+if [ ! -x "$cargo" ]; then
+  cargo="$(command -v cargo || true)"
+fi
+if [ -z "$cargo" ]; then
+  echo >&2 "ont: cargo not found, so the ont binary cannot be checked against its source."
+  echo >&2 "ont: install Rust (rustup), then run 'mise run build-ont' in $root"
+  exit 1
+fi
+
+# Build from the tooling root so rust-toolchain.toml applies. Progress goes to
+# stderr only when something is rebuilt; stdout stays clean for --format json.
+if ! (cd "$root" && "$cargo" build --release --quiet -p ont >&2); then
+  echo >&2 "ont: the ont source does not build, so it will not run an out-of-date binary."
+  echo >&2 "ont: fix the build, then run 'mise run build-ont' in $root"
+  exit 1
+fi
+
+exec "$binary" "$@"

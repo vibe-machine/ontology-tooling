@@ -16,9 +16,6 @@ target/
 *.db
 .beads-credential-key
 
-# ont release binary symlinked into bin/ by `mise run build-ont`
-/bin/ont
-
 # Beads / Dolt files (added by bd init)
 .beads/proxieddb/
 *.gate.lock*

@@ -8,6 +8,15 @@ This repo exists so release/version/tag automation and package-contract orchestr
 
 This repo is driven by `mise`.
 
+`bin/ont` is the one way to run the CLI, from here, from mise tasks, and from the ontology
+repositories' npm scripts (`../ontology-tooling/bin/ont ...`). It is a tracked script, not the
+binary: every call first runs `cargo build --release -p ont` from this directory and then runs
+`target/release/ont`. When nothing changed, cargo's check costs about 0.2 s; when the source
+changed, the call rebuilds first (progress on stderr, so `--format json` output stays clean). If
+the source does not build, or cargo is missing, `bin/ont` refuses with a message naming
+`mise run build-ont` instead of running an old binary. It prefers the rustup proxy
+(`~/.cargo/bin/cargo`), which honours `rust-toolchain.toml`.
+
 Primary local flows:
 
 ```bash
@@ -273,7 +282,7 @@ takes about 70 s.
 
 ## Layout
 
-- `bin/` stable cross-repo shims that build + exec the `ont` binary
+- `bin/ont` the entrypoint script: rebuilds the release binary when its source changed, then runs it
 - `crates/vibe-ontology/` durable, embeddable library (validation, release planning, apply)
 - `crates/ont/` the `ont` CLI/TUI binary
 - `docs/` design and architecture notes

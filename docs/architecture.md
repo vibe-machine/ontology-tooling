@@ -11,7 +11,7 @@ products embed; `ont` is the unified CLI/TUI over it, which owns release
 orchestration for the ontology repos (`ont release`). The former Node release
 tooling has been fully consolidated into this workspace; consumer repos invoke
 the CLI directly by path as `../ontology-tooling/bin/ont <subcommand>` (`bin/ont`
-is a gitignored symlink to the built `target/release/ont`). See
+is a script that rebuilds `target/release/ont` through cargo when stale, then runs it). See
 `docs/rust-workspace.md`, `docs/corpus-runner.md`,
 `docs/repo-wrapper-pattern.md`, and `docs/local-release-playbook.md`.
 

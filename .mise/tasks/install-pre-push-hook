@@ -37,7 +37,7 @@ $begin
 _ont_repo="\$(git rev-parse --show-toplevel)"
 _ont="\$_ont_repo/../ontology-tooling/bin/ont"
 if [ ! -x "\$_ont" ]; then
-  echo >&2 "pre-push: \$_ont not found; run 'mise run build-ont' in ontology-tooling"
+  echo >&2 "pre-push: \$_ont not found; check out ontology-tooling beside this repository"
   exit 1
 fi
 "\$_ont" --format text validate-package --released --repo "\$_ont_repo" || exit 1

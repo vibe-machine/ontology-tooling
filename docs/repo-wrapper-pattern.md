@@ -33,8 +33,8 @@ Each ontology repo should expose these stable scripts:
 }
 ```
 
-`bin/ont` is built by `mise run setup` (or `mise run build-ont`) in ontology-tooling;
-build it there before the first release. If a repo cannot support
+`bin/ont` rebuilds the release binary through cargo whenever its source changed,
+so there is nothing to build by hand first. If a repo cannot support
 `refresh:package-contract` yet, it is not ready for the shared `ont release` flow.
 
 ## Boundary Rule
