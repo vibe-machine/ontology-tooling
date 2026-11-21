@@ -1,6 +1,6 @@
 ---
 name: ontology-extend
-description: The process for changing and releasing an ontology package (a TypeQL package built on gist, in an `ontology-*` repository) so it installs and upgrades cleanly in the app. Use when (a) adding or changing an entity, relation, attribute or category in any ontology package; (b) writing or changing competency questions, their queries or sample fixtures; (c) bumping a package version, cutting a release, or tagging and pushing one; (d) writing or debugging a migration plan or an upgrade from an installed version; (e) running `ont` commands (`check-questions`, `validate-package`, `qualify`, `check-upgrade`, `release`) or `mise run check-package-release`; (f) a package install or upgrade fails in the app. Complements `typeql` (syntax), `modeling` (schema design), `ontology-repo-layout` (where repositories live) and `typedb` (the app's bootstrap pipeline).
+description: The process for changing and releasing an ontology package (a TypeQL package built on gist, in an `ontology-*` repository) so it installs and upgrades cleanly in the app. Use when (a) adding or changing an entity, relation, attribute or category in any ontology package; (b) writing or changing competency questions, their queries or sample data (`sampleData`, `sandbox/sample-data.tql`); (c) bumping a package version, cutting a release, or tagging and pushing one; (d) writing or debugging a migration plan or an upgrade from an installed version; (e) running `ont` commands (`check-questions`, `validate-package`, `qualify`, `check-upgrade`, `release`) or `mise run check-package-release`; (f) a package install or upgrade fails in the app. Complements `typeql` (syntax), `modeling` (schema design), `ontology-repo-layout` (where repositories live) and `typedb` (the app's bootstrap pipeline).
 ---
 
 # Changing and releasing an ontology package
@@ -9,19 +9,25 @@ A package is a set of TypeQL schema and data files plus a `package.json` contrac
 installs it from a git tag into a shared database beside gist and every other package, and later
 upgrades that database to newer tags. Every rule below exists because a release broke without it.
 
+**The app is the contract.** Before adding anything to a package (a field, a file, a
+convention), find what the app reads and how; what it does not read never reaches the user. The
+tooling copies the app's rules and can lag. Table of app expectations against tooling checks, and
+the gaps only the app's check catches:
+[references/app-package-contract.md](references/app-package-contract.md).
+
 Follow the steps in order. Each says what to run, what passing looks like, and why.
 
 ## 1. Before you start
 
-- Work in the package's checkout and keep its sibling checkouts beside it: `ontology-gist` (the
-  dependency, and the scripts `refresh:package-contract` calls), `ontology-tooling` (`bin/ont`),
-  every other `ontology-*` package that is installed beside this one, and the app's workspace
-  (OneWorkspace) for the app check. Package scripts reach them by relative paths such as
-  `../ontology-tooling/bin/ont`, so the layout matters. See `ontology-repo-layout`.
-- Read the package's `AGENTS.md` (or `CLAUDE.md`), `README.md` and `package.json`.
-- Note the current version and the last tag: `git tag --sort=-v:refname | head -3`. If the
-  working tree differs from the last tag in shipped files, that content is unreleased; it needs a
-  new version, never the tagged one (step 8).
+- Keep sibling checkouts beside the package: `ontology-gist`, `ontology-tooling` (`bin/ont`), every
+  other `ontology-*` package installed beside this one, and OneWorkspace for the app check. Package
+  scripts reach them by relative paths (`../ontology-tooling/bin/ont`). See `ontology-repo-layout`.
+- `bin/ont` rebuilds the `ont` binary through cargo when its source changed, and refuses (naming
+  `mise run build-ont`) if it cannot; never run `target/release/ont` directly.
+- `package.json` must carry `description`, `prefix` and `source`: the app cannot read a package
+  without the first two, and finds the installed version by `source`.
+- Read the package's `AGENTS.md` (or `CLAUDE.md`), `README.md` and `package.json`. Note the version and last tag (`git tag --sort=-v:refname | head -3`); shipped files that differ from it
+  are unreleased and need a new version, never the tagged one (step 8).
 - Make sure the repository has the pre-push hook that refuses unreleased content:
   `mise run install-pre-push-hook -- ../ontology-<name>` (run in `ontology-tooling`). It runs
   `../ontology-tooling/bin/ont validate-package --released --repo .` before every push.
@@ -35,18 +41,20 @@ Write the questions the change must answer before touching the schema.
 - Source: `competency/questions.json`, with `"competencyQuestions": "competency/questions.json"`
   in `package.json` (or `{"waived": "<reason>"}` for a package that deliberately has none).
   Format and generated files: [references/competency-questions.md](references/competency-questions.md).
-- Every question gets exactly one read query in `queries/`. Every query must return rows against
-  gist + the package + small invented sample data in `fixtures/`, which is never installed.
+- One read query per question in `queries/`, run on the package's `sampleData` as the app runs it
+  (database `sample-<package>`; no `sampleData`, no Run button). Write invented records in
+  `sandbox/sample-data.tql`, queries separated by `end;` lines; `ont prepare-package` / `ont
+  release` split it into numbered files; never split by hand. `fixtures` is refused. A question
+  with no rows fails unless marked `expectedEmpty` with the reason.
 - A question the model cannot answer is a finding: change the model. Never weaken the question to
   fit the model; that hides the gap the questions exist to find.
 
 ## 3. Design on gist, the way existing packages do
 
-- Before inventing a format, file or convention, find how an existing package (gist, beads,
-  Lingo) already ships the same thing, and copy it. Lingo 1.0.2 published its questions in a
-  made-up file format; the app reads only stored question records, so it showed none. Lingo 1.1.0
-  wrote its own upgrade as one file; gist's migration plans of small units were the working
-  pattern (step 6).
+- Before inventing a format, file or convention, find how the app reads it and how an existing
+  package (gist, beads, Lingo) ships it, and copy that. Lingo 1.0.2 published its questions in a
+  made-up format the app never read; 1.1.1 ran them on fixtures the app never loads, so it had no
+  Run button; 1.1.0 wrote its upgrade as one file instead of gist's plans of small units (step 6).
 - Build every entity on a gist type and every relation on a gist relation where one fits; name the
   roles in plain words. Use the current gist role names, which changed in gist 5:
   [references/gist-types.md](references/gist-types.md),
@@ -55,9 +63,9 @@ Write the questions the change must answer before touching the schema.
 - Fixed lists are category types with seed values, never `@values` strings.
 - Check every new type, relation, role and attribute name against every package installed beside
   this one, because they all share one database: `rg -nw '<Name>' ../ontology-*/schema/*.tql`.
-- Do not change a type a dependency owns. The app refuses an install that adds `owns`, a parent,
-  an annotation, or a role in someone else's relation to a dependency's type. The one allowance: a
-  dependency's type may play a role in a relation this package declares.
+- Do not change a type a dependency owns (no added `owns`, parent, annotation or role in someone
+  else's relation); the app refuses the install and the tooling does not check it. A dependency's
+  type may play a role in a relation this package declares.
 - Give every record type a `@key`. An upgrade can change a record only by matching its key;
   records without one pile up, one set per installed version (step 6).
 
@@ -77,18 +85,19 @@ Write the questions the change must answer before touching the schema.
   files (the package's `AGENTS.md` lists them). Oversized data files are split into
   `generated/apply-units/`; `ont prepare-package` and `ont release` re-split them every time.
 
-## 5. Questions, queries, fixtures
+## 5. Questions, queries, sample data
 
 ```bash
 ../ontology-tooling/bin/ont check-questions --repo . --write-generated  # docs + installed question files
 ../ontology-tooling/bin/ont check-questions --repo .                    # run every query
 ```
 
-Passing: every question reports `passed` with rows > 0, and `competency/last-run.json` is
-rewritten. `--write-generated` turns the questions into `docs/competency-questions.md`,
+Passing: every question reports `passed` (rows > 0, or 0 when `expectedEmpty`), and
+`competency/last-run.json` is rewritten. Sample files must each be one write query with at most one
+`match`, within 1000 stages, 50 blocks and 50,000 characters ([references/competency-questions.md](references/competency-questions.md#sample-data)). `--write-generated` turns the questions into `docs/competency-questions.md`,
 `schema/stored-queries.tql` and `data/<package>-questions.tql` (one `StoredQuestion` and one
 `StoredQuery` per question). Register both `.tql` files once in `schemas`, `data` and
-`assembly.loadOrder`. Worked example: Lingo 1.1.0 (27 questions).
+`assembly.loadOrder`. Worked example: Lingo 1.1.2 (27 questions, two sample files).
 
 Read the numbers in the output, not only the pass line. A count you did not expect (a "Total
 answers" far larger than the data) is a finding; one was ignored before Lingo 1.1.0 failed.
@@ -177,11 +186,11 @@ mise run check-package-release <this checkout> <gist checkout> [other dependency
 
 It runs the committed HEAD through the app's Install / Upgrade code on throwaway TypeDB servers:
 a fresh install, an upgrade from each earlier tag, and a lived-through database. Passing: final
-line `PASS: <name> <version> installs and upgrades through the app (full).` Options:
-`--quick` (previous release and lived-through only), `--install-only`, `--time-limit <seconds>`
-(per step, default 120), `--from-backup [folder]` (also upgrades a restored copy of the app's
-newest backup; written but not yet exercised). It re-signs a running sandbox app: run
-`mise run dev --sandbox` afterwards.
+line `PASS: <name> <version> installs and upgrades through the app (full).` Options: `--quick`,
+`--install-only`, `--time-limit <seconds>` (per step, default 120), `--from-backup [folder]` (also
+upgrades a restored copy of the app's newest backup). It is the only check for the gaps in
+[references/app-package-contract.md](references/app-package-contract.md). It re-signs a running
+sandbox app: run `mise run dev --sandbox` afterwards.
 
 If anything fails, the release is still local: with the owner's word, delete the tag and the
 release commit (`git tag -d v<next> && git reset --hard HEAD~1`), fix the cause, and release
@@ -203,23 +212,19 @@ package in the app, install it into the owner's database, then read the live dat
 
 ```typeql
 match $m isa OntologyModule, has moduleRepoUrl "https://github.com/vibe-machine/ontology-<name>";
-  $v isa OntologyModuleVersion, has moduleVersion $ver;
-  ontologyModuleVersionOf (version: $v, module: $m);
+  $v isa OntologyModuleVersion, has moduleVersion $ver; ontologyModuleVersionOf (version: $v, module: $m);
 select $ver;
-```
-
-```typeql
 match $q isa StoredQuestion, has storedPackage "<name>"; reduce $n = count;
 ```
 
-Open the package in the app and check its questions appear.
+Open the package in the app: its questions appear, and Run answers them on the sample database.
 
 ## 13. When something fails
 
 - Read the error text. TypeDB codes map to traps in
   [references/typedb-limits-and-traps.md](references/typedb-limits-and-traps.md)
   (`CXN07` row multiplication, `QEX18` stage limit, `CNT9` uniqueness, `INF11`, `FUN5`).
-- A question returns no rows: the model or the fixture is wrong, not the question (step 2).
+- A question returns no rows: the model or the sample data is wrong, not the question (step 2).
 - `ont` refuses: it is guarding a rule above. Fix the cause or the tool; never hand-edit generated
   or released files.
 - An upgrade failed in a real database: stop. The database may be half upgraded. Report the log,
@@ -229,7 +234,8 @@ Open the package in the app and check its questions appear.
 ## Checklist
 
 - [ ] Looked at how gist, beads or Lingo already do it before inventing anything
-- [ ] Questions written first; every question has one query that returns rows on fixtures
+- [ ] Found what the app reads before adding anything; `description`, `prefix`, `source` set
+- [ ] Questions written first; each query returns rows on `sampleData` (or is `expectedEmpty`)
 - [ ] Every type on gist and keyed; names checked against sibling packages; no change to a
       dependency's type
 - [ ] New types described; `displayName` unchanged; data files safe to run twice

@@ -26,8 +26,8 @@ dependencies:
 - repo_url: vibe-machine/skill-cabinet
   name: ontology-extend
   host: github.com
-  resolved_commit: 9007bf40d8ef99f39ac7307721ac32b23fa7ade7
-  resolved_ref: v1.8.0
+  resolved_commit: febe01057f6eb54b15b69c098ee6bb1e1dd6bc87
+  resolved_ref: v1.9.0
   version: unknown
   virtual_path: skills/ontology-extend
   is_virtual: true
@@ -36,6 +36,7 @@ dependencies:
   - .agents/skills/ontology-extend
   - .agents/skills/ontology-extend/SKILL.md
   - .agents/skills/ontology-extend/references/app-install-and-upgrade.md
+  - .agents/skills/ontology-extend/references/app-package-contract.md
   - .agents/skills/ontology-extend/references/competency-questions.md
   - .agents/skills/ontology-extend/references/gist-relations.md
   - .agents/skills/ontology-extend/references/gist-types.md
@@ -44,27 +45,30 @@ dependencies:
   - .claude/skills/ontology-extend
   - .claude/skills/ontology-extend/SKILL.md
   - .claude/skills/ontology-extend/references/app-install-and-upgrade.md
+  - .claude/skills/ontology-extend/references/app-package-contract.md
   - .claude/skills/ontology-extend/references/competency-questions.md
   - .claude/skills/ontology-extend/references/gist-relations.md
   - .claude/skills/ontology-extend/references/gist-types.md
   - .claude/skills/ontology-extend/references/schema-patterns.md
   - .claude/skills/ontology-extend/references/typedb-limits-and-traps.md
   deployed_file_hashes:
-    .agents/skills/ontology-extend/SKILL.md: sha256:2c9890912479168226d2c0af946a7652dedfd75825f0d088641e1656db7711cb
+    .agents/skills/ontology-extend/SKILL.md: sha256:0ed42105222a8dffc823f746e26427949d2c8f8cbdc8b92bbf7105f3a72ca32f
     .agents/skills/ontology-extend/references/app-install-and-upgrade.md: sha256:2f31357e41f2f6e782d7d56ec82f14861015bc1215829e2df252f5aafdc9f092
-    .agents/skills/ontology-extend/references/competency-questions.md: sha256:89ca19c125923541028ac7ee37134fb446d56bd0658749eec95b9af0e08de3d6
+    .agents/skills/ontology-extend/references/app-package-contract.md: sha256:26194e5284463fcd468bd040a01e7b8dc62a01151b7424dcf4b23c57b471a5cc
+    .agents/skills/ontology-extend/references/competency-questions.md: sha256:45b841e6aa1696fd50486f8371fa1b89d0a54b9258242c07a064533336b4dc0e
     .agents/skills/ontology-extend/references/gist-relations.md: sha256:61759870905254a4ae1dd182eb45ad8c2eb801ca6616a895b75ce36244192ac4
     .agents/skills/ontology-extend/references/gist-types.md: sha256:435c5c557ea2ad43654005d45f9f96ca8460102cf91fe3ebad782d881ef99b52
     .agents/skills/ontology-extend/references/schema-patterns.md: sha256:ece4be565a2300367c1e653b5c6d98cd1cecdc4fad5d859b7e78de4b882a8bd3
     .agents/skills/ontology-extend/references/typedb-limits-and-traps.md: sha256:5b5ee12531cbbbf19eb5d5991f6f1d113b22546ede6660db645034a1df432e8b
-    .claude/skills/ontology-extend/SKILL.md: sha256:2c9890912479168226d2c0af946a7652dedfd75825f0d088641e1656db7711cb
+    .claude/skills/ontology-extend/SKILL.md: sha256:0ed42105222a8dffc823f746e26427949d2c8f8cbdc8b92bbf7105f3a72ca32f
     .claude/skills/ontology-extend/references/app-install-and-upgrade.md: sha256:2f31357e41f2f6e782d7d56ec82f14861015bc1215829e2df252f5aafdc9f092
-    .claude/skills/ontology-extend/references/competency-questions.md: sha256:89ca19c125923541028ac7ee37134fb446d56bd0658749eec95b9af0e08de3d6
+    .claude/skills/ontology-extend/references/app-package-contract.md: sha256:26194e5284463fcd468bd040a01e7b8dc62a01151b7424dcf4b23c57b471a5cc
+    .claude/skills/ontology-extend/references/competency-questions.md: sha256:45b841e6aa1696fd50486f8371fa1b89d0a54b9258242c07a064533336b4dc0e
     .claude/skills/ontology-extend/references/gist-relations.md: sha256:61759870905254a4ae1dd182eb45ad8c2eb801ca6616a895b75ce36244192ac4
     .claude/skills/ontology-extend/references/gist-types.md: sha256:435c5c557ea2ad43654005d45f9f96ca8460102cf91fe3ebad782d881ef99b52
     .claude/skills/ontology-extend/references/schema-patterns.md: sha256:ece4be565a2300367c1e653b5c6d98cd1cecdc4fad5d859b7e78de4b882a8bd3
     .claude/skills/ontology-extend/references/typedb-limits-and-traps.md: sha256:5b5ee12531cbbbf19eb5d5991f6f1d113b22546ede6660db645034a1df432e8b
-  content_hash: sha256:e030d4d49bdf71408b499a16d21fdd72964640412b5fcf67c4c80fc4e4b11e76
+  content_hash: sha256:4ad631e92445b2b03b298f13b2aa948c1df9a2e2c8f0a112f759cec6e81068c9
 - repo_url: vibe-machine/skill-cabinet
   name: ontology-repo-layout
   host: github.com
@@ -168,7 +172,7 @@ deployments:
   owners:
   - vibe-machine/skill-cabinet/skills/ontology-extend
   active_owner: vibe-machine/skill-cabinet/skills/ontology-extend
-  content_hash: sha256:2c9890912479168226d2c0af946a7652dedfd75825f0d088641e1656db7711cb
+  content_hash: sha256:0ed42105222a8dffc823f746e26427949d2c8f8cbdc8b92bbf7105f3a72ca32f
 - kind: project-relative
   target: agent-skills
   value: .agents/skills/ontology-extend/references/app-install-and-upgrade.md
@@ -180,13 +184,22 @@ deployments:
   content_hash: sha256:2f31357e41f2f6e782d7d56ec82f14861015bc1215829e2df252f5aafdc9f092
 - kind: project-relative
   target: agent-skills
+  value: .agents/skills/ontology-extend/references/app-package-contract.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/ontology-extend
+  active_owner: vibe-machine/skill-cabinet/skills/ontology-extend
+  content_hash: sha256:26194e5284463fcd468bd040a01e7b8dc62a01151b7424dcf4b23c57b471a5cc
+- kind: project-relative
+  target: agent-skills
   value: .agents/skills/ontology-extend/references/competency-questions.md
   runtime: null
   scope: project
   owners:
   - vibe-machine/skill-cabinet/skills/ontology-extend
   active_owner: vibe-machine/skill-cabinet/skills/ontology-extend
-  content_hash: sha256:89ca19c125923541028ac7ee37134fb446d56bd0658749eec95b9af0e08de3d6
+  content_hash: sha256:45b841e6aa1696fd50486f8371fa1b89d0a54b9258242c07a064533336b4dc0e
 - kind: project-relative
   target: agent-skills
   value: .agents/skills/ontology-extend/references/gist-relations.md
@@ -330,7 +343,7 @@ deployments:
   owners:
   - vibe-machine/skill-cabinet/skills/ontology-extend
   active_owner: vibe-machine/skill-cabinet/skills/ontology-extend
-  content_hash: sha256:2c9890912479168226d2c0af946a7652dedfd75825f0d088641e1656db7711cb
+  content_hash: sha256:0ed42105222a8dffc823f746e26427949d2c8f8cbdc8b92bbf7105f3a72ca32f
 - kind: project-relative
   target: claude
   value: .claude/skills/ontology-extend/references/app-install-and-upgrade.md
@@ -342,13 +355,22 @@ deployments:
   content_hash: sha256:2f31357e41f2f6e782d7d56ec82f14861015bc1215829e2df252f5aafdc9f092
 - kind: project-relative
   target: claude
+  value: .claude/skills/ontology-extend/references/app-package-contract.md
+  runtime: null
+  scope: project
+  owners:
+  - vibe-machine/skill-cabinet/skills/ontology-extend
+  active_owner: vibe-machine/skill-cabinet/skills/ontology-extend
+  content_hash: sha256:26194e5284463fcd468bd040a01e7b8dc62a01151b7424dcf4b23c57b471a5cc
+- kind: project-relative
+  target: claude
   value: .claude/skills/ontology-extend/references/competency-questions.md
   runtime: null
   scope: project
   owners:
   - vibe-machine/skill-cabinet/skills/ontology-extend
   active_owner: vibe-machine/skill-cabinet/skills/ontology-extend
-  content_hash: sha256:89ca19c125923541028ac7ee37134fb446d56bd0658749eec95b9af0e08de3d6
+  content_hash: sha256:45b841e6aa1696fd50486f8371fa1b89d0a54b9258242c07a064533336b4dc0e
 - kind: project-relative
   target: claude
   value: .claude/skills/ontology-extend/references/gist-relations.md
