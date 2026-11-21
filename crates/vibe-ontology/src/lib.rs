@@ -15,6 +15,7 @@
 
 pub mod apply;
 pub mod bootstrap_uniqueness;
+pub mod competency_questions;
 pub mod corpus;
 pub mod error;
 pub mod executable_package;
@@ -23,6 +24,10 @@ pub mod migration_diff;
 pub mod package_release;
 pub mod package_validator;
 pub mod release_args;
+pub mod release_integrity;
+pub mod stored_questions;
+pub mod throwaway_typedb;
+pub mod upgrade_limits;
 pub mod version;
 
 pub use error::{Error, Result};

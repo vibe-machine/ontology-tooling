@@ -1080,7 +1080,10 @@ pub fn prepare_executable_package(
     options: Option<PrepareExecutablePackageOptions>,
 ) -> Result<Value> {
     let package_path = repo_path.join("package.json");
-    let package = read_json(&package_path)?;
+    let mut package = read_json(&package_path)?;
+    // Re-split from the source files rather than copying existing units, so
+    // units never keep stale headers or contents (e.g. an old manifest).
+    collapse_apply_units_to_sources(repo_path, &mut package);
     let mut preparer = PackagePreparer::new(repo_path, package, options.unwrap_or_default());
     preparer.preload_sources()?;
     preparer.remove_generated_root()?;
@@ -1103,6 +1106,81 @@ pub fn prepare_executable_package(
 pub struct ApplyUnit {
     pub path: String,
     pub text: String,
+}
+
+/// The source file an apply unit was split from
+/// (`generated/apply-units/<stem>/NNNN.tql` -> `<stem>.tql`), when it exists.
+fn apply_unit_source(repo_path: &Path, path: &Value) -> Option<Value> {
+    let relative = path.as_str()?;
+    let remainder = relative.strip_prefix(&format!("{APPLY_UNITS_ROOT}/"))?;
+    let (stem, filename) = remainder.rsplit_once('/')?;
+    let number = filename.strip_suffix(".tql")?;
+    if number.is_empty() || !number.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let source = format!("{stem}.tql");
+    joined_path(repo_path, &source)
+        .is_file()
+        .then(|| Value::String(source))
+}
+
+fn collapse_paths(repo_path: &Path, paths: Vec<Value>) -> Vec<Value> {
+    unique(
+        paths
+            .into_iter()
+            .map(|path| apply_unit_source(repo_path, &path).unwrap_or(path))
+            .collect(),
+    )
+}
+
+/// Replaces every listed apply unit whose source file exists by that source,
+/// so preparation splits the current source afresh.
+fn collapse_apply_units_to_sources(repo_path: &Path, package: &mut Value) {
+    if let Some(data) = package.get("data").and_then(Value::as_array).cloned() {
+        package["data"] = Value::Array(collapse_paths(repo_path, data));
+    }
+    let provenance = provenance_files(package);
+    if !provenance.is_empty() {
+        set_provenance_files(package, collapse_paths(repo_path, provenance));
+    }
+    if let Some(load_order) = package
+        .pointer("/assembly/loadOrder")
+        .and_then(Value::as_array)
+        .cloned()
+    {
+        package["assembly"]["loadOrder"] = Value::Array(collapse_paths(repo_path, load_order));
+    }
+    if let Some(plans) = package
+        .pointer_mut("/migration/plans")
+        .and_then(Value::as_array_mut)
+    {
+        for plan in plans {
+            for phase in plan
+                .get_mut("phases")
+                .and_then(Value::as_array_mut)
+                .into_iter()
+                .flatten()
+            {
+                let Some(units) = phase.get("units").and_then(Value::as_array).cloned() else {
+                    continue;
+                };
+                let mut next: Vec<Value> = Vec::new();
+                for mut unit in units {
+                    if let Some(source) = unit
+                        .get("path")
+                        .and_then(|path| apply_unit_source(repo_path, path))
+                    {
+                        if next.last().and_then(|last| last.get("path")) == Some(&source) {
+                            continue;
+                        }
+                        unit["path"] = source;
+                    }
+                    next.push(unit);
+                }
+                phase["units"] = Value::Array(next);
+            }
+        }
+    }
 }
 
 /// Split one TypeQL write file into contextual apply units at
@@ -1135,12 +1213,32 @@ pub fn render_contextual_apply_units(
         .collect())
 }
 
+/// Splits write TypeQL into the blocks of successive units, each within the
+/// data write-unit limits once `header_chars` of header are added, and each
+/// carrying the declarations its blocks reference (the same chunking package
+/// data files get). An empty text yields no units.
+pub(crate) fn split_write_text(text: &str, header_chars: usize) -> Result<Vec<Vec<String>>> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    let options = PrepareExecutablePackageOptions {
+        max_chars: MAX_WRITE_UNIT_CHARS.saturating_sub(header_chars),
+        max_blocks: MAX_WRITE_UNIT_BLOCKS,
+    };
+    if has_put_only(trimmed) {
+        build_put_chunks(trimmed, options)
+    } else {
+        build_contextual_chunks(trimmed, options)
+    }
+}
+
 /// SHA-256 of `text` as lowercase hex, the form package manifests record.
 pub fn sha256_hex(text: &str) -> String {
     hash_bytes(text.as_bytes())
 }
 
-fn assert_safe_write_unit(relative_path: &str, text: &str) -> Result<()> {
+pub(crate) fn assert_safe_write_unit(relative_path: &str, text: &str) -> Result<()> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
         return Err(invalid(format!("write unit '{relative_path}' is empty")));
@@ -1566,6 +1664,68 @@ mod tests {
             .path()
             .join("generated/apply-units/generated/apply-units/data/docs/0001.tql")
             .exists());
+    }
+
+    #[test]
+    fn prepare_resplits_stale_units_from_their_source() {
+        // Units listed in package.json were split from data/docs.tql under an
+        // older manifest; the source has since changed.
+        let package = json!({
+            "data": [
+                "generated/apply-units/data/docs/0001.tql",
+                "generated/apply-units/data/docs/0002.tql"
+            ],
+            "manifests": ["manifests/fixture-v1.0.2.package-manifest.json"],
+            "provenance": { "manifest": "manifests/fixture-v1.0.2.package-manifest.json" },
+            "assembly": {
+                "loadOrder": [
+                    "schema/fixture.tql",
+                    "generated/apply-units/data/docs/0001.tql",
+                    "generated/apply-units/data/docs/0002.tql"
+                ],
+                "generatedArtifacts": ["data/docs.tql"]
+            },
+            "schemas": [{ "name": "fixture", "file": "schema/fixture.tql" }]
+        });
+        let stale = "# Generated executable apply unit from data/docs.tql\n\
+                     # manifest: manifests/fixture-v1.0.1.package-manifest.json\n\nput $old isa Thing;\n";
+        let directory = fixture(
+            &package,
+            &[
+                ("schema/fixture.tql", "define entity Thing;\n".to_string()),
+                ("data/docs.tql", repeated_put_file(60, 10)),
+                (
+                    "generated/apply-units/data/docs/0001.tql",
+                    stale.to_string(),
+                ),
+                (
+                    "generated/apply-units/data/docs/0002.tql",
+                    stale.to_string(),
+                ),
+                (
+                    "manifests/fixture-v1.0.2.package-manifest.json",
+                    "{\n  \"upstream\": { \"sourceArtifacts\": [] },\n  \"artifacts\": []\n}\n"
+                        .to_string(),
+                ),
+            ],
+        );
+
+        let prepared = prepare_executable_package(directory.path(), None).unwrap();
+        assert_eq!(
+            prepared["data"],
+            json!([
+                "generated/apply-units/data/docs/0001.tql",
+                "generated/apply-units/data/docs/0002.tql"
+            ])
+        );
+        let first = fs::read_to_string(
+            directory
+                .path()
+                .join("generated/apply-units/data/docs/0001.tql"),
+        )
+        .unwrap();
+        assert!(first.contains("# manifest: manifests/fixture-v1.0.2.package-manifest.json"));
+        assert!(first.contains("doc-0") && !first.contains("$old"));
     }
 
     #[test]

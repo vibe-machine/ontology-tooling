@@ -15,7 +15,12 @@ use regex::Regex;
 use serde_json::Value;
 
 use crate::error::{Error, Result};
-use crate::executable_package::{hash_bytes, split_put_statements_on_lf as split_put_statements};
+use crate::executable_package::{
+    hash_bytes, split_put_statements_on_lf as split_put_statements, split_write_text,
+};
+use crate::upgrade_limits::{
+    check_upgrade_query, check_upgrade_unit, count_pipeline_stages, MAX_PIPELINE_STAGES,
+};
 
 fn invalid<S: Into<String>>(message: S) -> Error {
     Error::Version(message.into())
@@ -128,7 +133,10 @@ fn extract_group_key(group: &PutGroup) -> String {
         (Some(type_match), Some(has_match)) => {
             format!("{}::{}::{}", &type_match[1], &has_match[1], &has_match[2])
         }
-        _ => format!("raw::{}", js_substring(first_statement, 120)),
+        _ => format!(
+            "raw::{}",
+            js_substring(&canonical_text(std::slice::from_ref(first_statement)), 120)
+        ),
     }
 }
 
@@ -443,74 +451,129 @@ fn append_manifest_artifact(
     write_json(&manifest_path, &manifest)
 }
 
-/// Generates a migration diff between `v{from_version}` and the current
-/// working tree, returning the relative migration path or `None` when no data
-/// changed. Mirrors JavaScript `generateMigrationDiff` with synchronous I/O.
-pub fn generate_migration_diff(
-    repo_path: &Path,
-    from_version: &str,
-    to_version: &str,
-) -> Result<Option<String>> {
-    let package_path = repo_path.join("package.json");
-    let package = read_json(&package_path)?;
-    let non_migratable_paths = non_migratable_asset_paths_from_package_json(&package);
-    let data_files: Vec<String> = string_array(&package, "data")?
+/// What [`generate_upgrade`] wrote.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeneratedUpgrade {
+    /// `migrations/v<from>-to-v<to>.tql` for a single-file upgrade, or the
+    /// directory `migrations/v<from>-to-v<to>` when the upgrade was split.
+    pub path: String,
+    /// The files written, in apply order.
+    pub files: Vec<String>,
+    /// Query stages in the whole upgrade, before any split.
+    pub stages: usize,
+}
+
+impl GeneratedUpgrade {
+    /// True when the upgrade was written as ordered units in a directory.
+    pub fn is_split(&self) -> bool {
+        self.files.len() != 1 || self.files[0] != self.path
+    }
+}
+
+fn schema_resource_write_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| {
+        Regex::new(r"(?m)^\s*(?:put|insert)\s+\$[A-Za-z][A-Za-z0-9_]*\s+isa\s+SchemaResource\b")
+            .expect("schema resource regex is valid")
+    })
+}
+
+fn is_provenance_path(relative_path: &str) -> bool {
+    relative_path.ends_with(".tql")
+        && relative_path
+            .split('/')
+            .any(|component| component.to_lowercase().contains("provenance"))
+}
+
+/// Mirrors the app's `PackageBootstrapUnit.isSchemaDocumentation`: the app
+/// deletes a package's schema documentation and re-applies these files after
+/// every upgrade (diff or plan), so an upgrade never needs to carry them.
+fn is_schema_documentation(relative_path: &str, text: &str) -> bool {
+    if is_provenance_path(relative_path) {
+        return false;
+    }
+    (relative_path.contains("schema-docs") && relative_path.ends_with(".tql"))
+        || schema_resource_write_regex().is_match(text)
+}
+
+/// The group's text with its variables renamed in order of appearance, so two
+/// groups that differ only in generated variable names compare equal.
+fn canonical_text(statements: &[String]) -> String {
+    let text = statements.join("\n");
+    let mut names: HashMap<String, usize> = HashMap::new();
+    referenced_variable_regex()
+        .replace_all(&text, |captures: &regex::Captures<'_>| {
+            let next = names.len();
+            let id = *names.entry(captures[1].to_string()).or_insert(next);
+            format!("$v{id}")
+        })
+        .into_owned()
+}
+
+fn rename_variables(text: &str, renames: &HashMap<String, String>) -> String {
+    if renames.is_empty() {
+        return text.to_string();
+    }
+    referenced_variable_regex()
+        .replace_all(text, |captures: &regex::Captures<'_>| {
+            match renames.get(&captures[1]) {
+                Some(renamed) => format!("${renamed}"),
+                None => captures[0].to_string(),
+            }
+        })
+        .into_owned()
+}
+
+/// Joins per-file sections into one query text. The app runs a single-file
+/// upgrade as one pipeline, where a variable means the same concept in every
+/// stage; each data file names its variables independently, so a name a later
+/// section shares with an earlier one is renamed.
+fn join_sections(sections: &[String]) -> String {
+    let mut used: HashSet<String> = HashSet::new();
+    let mut joined = Vec::new();
+    for (index, section) in sections.iter().enumerate() {
+        let names: HashSet<String> = referenced_variable_regex()
+            .captures_iter(section)
+            .map(|captures| captures[1].to_string())
+            .collect();
+        let mut renames = HashMap::new();
+        let mut sorted: Vec<&String> = names.iter().filter(|name| used.contains(*name)).collect();
+        sorted.sort();
+        for name in sorted {
+            let mut candidate = format!("{name}_s{}", index + 1);
+            while used.contains(&candidate) || names.contains(&candidate) {
+                candidate.push('x');
+            }
+            used.insert(candidate.clone());
+            renames.insert(name.clone(), candidate);
+        }
+        used.extend(names);
+        joined.push(rename_variables(section, &renames));
+    }
+    joined.join("\n\n")
+}
+
+fn data_files_of(package: &Value) -> Result<Vec<String>> {
+    let non_migratable_paths = non_migratable_asset_paths_from_package_json(package);
+    Ok(string_array(package, "data")?
         .into_iter()
         .filter(|path| !non_migratable_paths.contains(path))
-        .collect();
-    if data_files.is_empty() {
-        return Ok(None);
-    }
+        .collect())
+}
 
-    let from_tag = format!("v{from_version}");
-    let mut all_new_groups = Vec::new();
-    let mut new_groups = Vec::new();
-    let mut update_statements = Vec::new();
-
-    for data_file in data_files {
-        let old_text = get_file_at_tag(repo_path, &from_tag, &data_file);
-        let new_text = read_text(&joined_path(repo_path, &data_file))?;
-        let old_groups = group_put_statements(&split_put_statements(&old_text));
-        let current_groups = group_put_statements(&split_put_statements(&new_text));
-        all_new_groups.extend(current_groups.clone());
-
-        let mut old_map: HashMap<String, PutGroup> = HashMap::new();
-        for group in old_groups {
-            old_map.insert(extract_group_key(&group), group);
-        }
-
-        for group in current_groups {
-            let key = extract_group_key(&group);
-            match old_map.get(&key) {
-                None => new_groups.push(group),
-                Some(old_group)
-                    if old_group.statements.join("\n") != group.statements.join("\n") =>
-                {
-                    if let Some(update) = diff_entity_group(old_group, &group) {
-                        update_statements.push(update);
-                    } else {
-                        new_groups.push(group);
-                    }
-                }
-                Some(_) => {}
-            }
-        }
-    }
-
-    if new_groups.is_empty() && update_statements.is_empty() {
-        return Ok(None);
-    }
-
-    let mut put_groups = if new_groups.is_empty() {
-        Vec::new()
+fn remove_existing(path: &Path) -> Result<()> {
+    let result = if path.is_dir() {
+        fs::remove_dir_all(path)
+    } else if path.exists() {
+        fs::remove_file(path)
     } else {
-        resolve_preambles(&new_groups, &all_new_groups)
+        return Ok(());
     };
-    put_groups.extend(new_groups);
+    result.map_err(|error| invalid(format!("failed to remove {}: {error}", path.display())))
+}
 
-    let migration_relative_path = format!("migrations/v{from_version}-to-v{to_version}.tql");
-    let migration_path = joined_path(repo_path, &migration_relative_path);
-    if let Some(parent) = migration_path.parent() {
+fn write_file(path: &Path, content: &str) -> Result<()> {
+    if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| {
             invalid(format!(
                 "failed to create directory {}: {error}",
@@ -518,54 +581,194 @@ pub fn generate_migration_diff(
             ))
         })?;
     }
+    fs::write(path, content)
+        .map_err(|error| invalid(format!("failed to write {}: {error}", path.display())))
+}
+
+/// Generates a migration diff between `v{from_version}` and the current
+/// working tree, returning the relative migration path or `None` when no data
+/// changed. See [`generate_upgrade`]; for a split upgrade the path is the
+/// directory holding the units.
+pub fn generate_migration_diff(
+    repo_path: &Path,
+    from_version: &str,
+    to_version: &str,
+) -> Result<Option<String>> {
+    Ok(generate_upgrade(repo_path, from_version, to_version)?.map(|upgrade| upgrade.path))
+}
+
+/// Generates the data upgrade from `v{from_version}` (the git tag) to the
+/// current working tree, or `None` when no upgrade data changed.
+///
+/// Only rows that changed are written. Rows are matched by their key across
+/// all of a version's data files (so a row that moved to another file, or got
+/// a different generated variable name, is unchanged). Schema documentation is
+/// left out: the app deletes and re-applies it after every upgrade.
+///
+/// When the upgrade fits in one query ([`MAX_PIPELINE_STAGES`]) it is written
+/// to `migrations/v<from>-to-v<to>.tql`, the file the app runs as one query.
+/// Otherwise it is split into ordered units
+/// `migrations/v<from>-to-v<to>/NNNN.tql`, each within the data write-unit
+/// limits.
+pub fn generate_upgrade(
+    repo_path: &Path,
+    from_version: &str,
+    to_version: &str,
+) -> Result<Option<GeneratedUpgrade>> {
+    generate_upgrade_with_stage_limit(repo_path, from_version, to_version, MAX_PIPELINE_STAGES)
+}
+
+/// [`generate_upgrade`] with a lower single-file stage limit (at most
+/// [`MAX_PIPELINE_STAGES`]); an upgrade over it is split into units.
+pub fn generate_upgrade_with_stage_limit(
+    repo_path: &Path,
+    from_version: &str,
+    to_version: &str,
+    max_single_file_stages: usize,
+) -> Result<Option<GeneratedUpgrade>> {
+    let max_single_file_stages = max_single_file_stages.min(MAX_PIPELINE_STAGES);
+    let package_path = repo_path.join("package.json");
+    let package = read_json(&package_path)?;
+    let data_files = data_files_of(&package)?;
+    let from_tag = format!("v{from_version}");
+    let base_relative_path = format!("migrations/v{from_version}-to-v{to_version}");
+    let file_relative_path = format!("{base_relative_path}.tql");
+    remove_existing(&joined_path(repo_path, &file_relative_path))?;
+    remove_existing(&joined_path(repo_path, &base_relative_path))?;
+    if data_files.is_empty() {
+        return Ok(None);
+    }
+
+    // The previous release's rows, keyed across all of its data files.
+    let old_data_files =
+        serde_json::from_str::<Value>(&get_file_at_tag(repo_path, &from_tag, "package.json"))
+            .ok()
+            .and_then(|old_package| data_files_of(&old_package).ok())
+            .unwrap_or_else(|| data_files.clone());
+    let mut old_map: HashMap<String, PutGroup> = HashMap::new();
+    for data_file in &old_data_files {
+        let old_text = get_file_at_tag(repo_path, &from_tag, data_file);
+        if is_schema_documentation(data_file, &old_text) {
+            continue;
+        }
+        for group in group_put_statements(&split_put_statements(&old_text)) {
+            old_map.insert(extract_group_key(&group), group);
+        }
+    }
+
+    let mut sections = Vec::new();
+    for data_file in &data_files {
+        let new_text = read_text(&joined_path(repo_path, data_file))?;
+        if is_schema_documentation(data_file, &new_text) {
+            continue;
+        }
+        let current_groups = group_put_statements(&split_put_statements(&new_text));
+        let mut new_groups = Vec::new();
+        let mut update_statements = Vec::new();
+        for group in &current_groups {
+            match old_map.get(&extract_group_key(group)) {
+                None => new_groups.push(group.clone()),
+                Some(old_group)
+                    if canonical_text(&old_group.statements)
+                        != canonical_text(&group.statements) =>
+                {
+                    if let Some(update) = diff_entity_group(old_group, group) {
+                        update_statements.push(update);
+                    } else {
+                        new_groups.push(group.clone());
+                    }
+                }
+                Some(_) => {}
+            }
+        }
+        if new_groups.is_empty() && update_statements.is_empty() {
+            continue;
+        }
+
+        let mut put_groups = if new_groups.is_empty() {
+            Vec::new()
+        } else {
+            resolve_preambles(&new_groups, &current_groups)
+        };
+        put_groups.extend(new_groups);
+        let mut parts = Vec::new();
+        if !put_groups.is_empty() {
+            parts.push(
+                put_groups
+                    .iter()
+                    .map(|group| group.statements.join("\n"))
+                    .collect::<Vec<_>>()
+                    .join("\n\n"),
+            );
+        }
+        if !update_statements.is_empty() {
+            parts.push(update_statements.join("\n\n"));
+        }
+        sections.push(parts.join("\n\n"));
+    }
+
+    if sections.is_empty() {
+        return Ok(None);
+    }
+    let body = join_sections(&sections);
+    let stages = count_pipeline_stages(&body);
 
     let manifest_relative_path = string_array(&package, "manifests")?
         .into_iter()
         .find(|path| path.ends_with(".package-manifest.json"));
-    let mut header = vec![
-        format!(
-            "# Migration: {} v{from_version} → v{to_version}",
-            package_name(&package)
-        ),
-        "# Generated by ontology-release".to_string(),
-        "# Apply in a write transaction against an existing database".to_string(),
-    ];
-    if let Some(path) = &manifest_relative_path {
-        header.push(format!("# manifest: {path}"));
-    }
-    header.push(String::new());
+    let name = package_name(&package);
+    let manifest_line = manifest_relative_path
+        .as_ref()
+        .map(|path| format!("# manifest: {path}\n"))
+        .unwrap_or_default();
 
-    let mut sections = Vec::new();
-    if !put_groups.is_empty() {
-        sections.push(
-            put_groups
-                .iter()
-                .map(|group| group.statements.join("\n"))
-                .collect::<Vec<_>>()
-                .join("\n\n"),
+    let mut written: Vec<(String, String)> = Vec::new();
+    if stages <= max_single_file_stages {
+        let content = format!(
+            "# Migration: {name} v{from_version} → v{to_version}\n\
+             # Generated by ontology-release\n\
+             # Apply in a write transaction against an existing database\n\
+             {manifest_line}\n{body}\n"
         );
+        check_upgrade_query(&file_relative_path, &content)?;
+        written.push((file_relative_path, content));
+    } else {
+        let header = |index: usize, count: usize| {
+            format!(
+                "# Migration unit {index} of {count}: {name} v{from_version} → v{to_version}\n\
+                 # Generated by ontology-release\n\
+                 # Apply each unit in order, as one write query, after the package schemas\n\
+                 {manifest_line}\n"
+            )
+        };
+        let chunks = split_write_text(&body, header(9999, 9999).encode_utf16().count() + 2)?;
+        let count = chunks.len();
+        for (index, chunk) in chunks.iter().enumerate() {
+            let relative_path = format!("{base_relative_path}/{:04}.tql", index + 1);
+            let content = format!("{}{}\n", header(index + 1, count), chunk.join("\n\n"));
+            check_upgrade_unit(&relative_path, &content)?;
+            written.push((relative_path, content));
+        }
     }
-    if !update_statements.is_empty() {
-        sections.push(update_statements.join("\n\n"));
-    }
-    let migration_content = format!("{}\n{}\n", header.join("\n"), sections.join("\n\n"));
-    fs::write(&migration_path, &migration_content).map_err(|error| {
-        invalid(format!(
-            "failed to write {}: {error}",
-            migration_path.display()
-        ))
-    })?;
 
-    if let Some(manifest_relative_path) = manifest_relative_path {
-        append_manifest_artifact(
-            repo_path,
-            &manifest_relative_path,
-            &migration_relative_path,
-            &migration_content,
-        )?;
+    for (relative_path, content) in &written {
+        write_file(&joined_path(repo_path, relative_path), content)?;
+        if let Some(manifest_relative_path) = &manifest_relative_path {
+            append_manifest_artifact(repo_path, manifest_relative_path, relative_path, content)?;
+        }
     }
 
-    Ok(Some(migration_relative_path))
+    let files: Vec<String> = written.into_iter().map(|(path, _)| path).collect();
+    let path = if stages <= max_single_file_stages {
+        files[0].clone()
+    } else {
+        base_relative_path
+    };
+    Ok(Some(GeneratedUpgrade {
+        path,
+        files,
+        stages,
+    }))
 }
 
 #[cfg(test)]
@@ -950,5 +1153,159 @@ put (resource: $r3, module: $module) isa inModule;
         assert_eq!(artifact["kind"], "migration");
         assert_eq!(artifact["path"], relative_path);
         assert_eq!(artifact["sha256"], hash_bytes(expected.as_bytes()));
+    }
+
+    fn release_fixture(old_files: &[(&str, String)], new_files: &[(&str, String)]) -> TempDir {
+        let directory = TempDir::new().unwrap();
+        let repo_path = directory.path().join("repo");
+        let write_package = |files: &[(&str, String)]| {
+            for (path, text) in files {
+                let absolute = repo_path.join(path);
+                fs::create_dir_all(absolute.parent().unwrap()).unwrap();
+                fs::write(absolute, text).unwrap();
+            }
+            let data: Vec<&str> = files.iter().map(|(path, _)| *path).collect();
+            write_json(
+                &repo_path.join("package.json"),
+                &json!({"name": "fixture", "version": "1.0.0", "data": data}),
+            )
+            .unwrap();
+        };
+        fs::create_dir_all(&repo_path).unwrap();
+        write_package(old_files);
+        initialize_fixture_repo(&repo_path);
+        for (path, _) in old_files {
+            fs::remove_file(repo_path.join(path)).unwrap();
+        }
+        write_package(new_files);
+        directory
+    }
+
+    fn docs(resources: &[&str]) -> String {
+        let mut text = "put $module isa SchemaModule, has moduleKey \"fixture\";\n\n".to_string();
+        for (index, resource) in resources.iter().enumerate() {
+            text.push_str(&format!(
+                "put $resource_{index} isa SchemaResource, has docKey \"{resource}\";\nput (resource: $resource_{index}, module: $module) isa inModule;\n\n"
+            ));
+        }
+        text
+    }
+
+    #[test]
+    fn upgrade_leaves_out_schema_documentation_the_app_rebuilds() {
+        let directory = release_fixture(
+            &[
+                (
+                    "generated/apply-units/data/fixture-schema-docs/0001.tql",
+                    docs(&["a", "b"]),
+                ),
+                (
+                    "data/seed.tql",
+                    "put $s isa Seed, has seedKey \"one\";\n".to_string(),
+                ),
+            ],
+            &[
+                (
+                    "generated/apply-units/data/fixture-schema-docs/0001.tql",
+                    docs(&["a", "new"]),
+                ),
+                (
+                    "generated/apply-units/data/fixture-schema-docs/0002.tql",
+                    docs(&["b"]),
+                ),
+                (
+                    "data/seed.tql",
+                    "put $s isa Seed, has seedKey \"one\";\n".to_string(),
+                ),
+            ],
+        );
+        let repo_path = directory.path().join("repo");
+        assert_eq!(
+            generate_upgrade(&repo_path, "1.0.0", "1.0.1").unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn rows_that_moved_file_or_were_renumbered_are_unchanged() {
+        let directory = release_fixture(
+            &[(
+                "data/a.tql",
+                "put $c1 isa Kind, has name \"x\";\nput $c2 isa Kind, has name \"y\";\n"
+                    .to_string(),
+            )],
+            &[
+                (
+                    "data/a.tql",
+                    "put $c7 isa Kind, has name \"y\";\n".to_string(),
+                ),
+                (
+                    "data/b.tql",
+                    "put $c1 isa Kind, has name \"x\";\nput $c2 isa Kind, has name \"z\";\n"
+                        .to_string(),
+                ),
+            ],
+        );
+        let repo_path = directory.path().join("repo");
+        let upgrade = generate_upgrade(&repo_path, "1.0.0", "1.0.1")
+            .unwrap()
+            .unwrap();
+        let text = read_text(&repo_path.join(&upgrade.path)).unwrap();
+        assert!(text.contains("has name \"z\""), "{text}");
+        assert!(!text.contains("has name \"x\""), "{text}");
+        assert!(!text.contains("has name \"y\""), "{text}");
+    }
+
+    #[test]
+    fn variables_shared_between_files_are_renamed_in_the_one_query() {
+        let directory = release_fixture(
+            &[("data/a.tql", String::new()), ("data/b.tql", String::new())],
+            &[
+                (
+                    "data/a.tql",
+                    "put $c1 isa Kind, has name \"x\";\n".to_string(),
+                ),
+                (
+                    "data/b.tql",
+                    "put $c1 isa MediaType, has name \"y\";\n".to_string(),
+                ),
+            ],
+        );
+        let repo_path = directory.path().join("repo");
+        let upgrade = generate_upgrade(&repo_path, "1.0.0", "1.0.1")
+            .unwrap()
+            .unwrap();
+        let text = read_text(&repo_path.join(&upgrade.path)).unwrap();
+        assert!(text.contains("put $c1 isa Kind"), "{text}");
+        assert!(text.contains("put $c1_s2 isa MediaType"), "{text}");
+    }
+
+    #[test]
+    fn an_upgrade_over_the_stage_limit_is_split_into_units_within_limits() {
+        let seeds: String = (0..1100)
+            .map(|index| format!("put $s{index} isa Seed, has seedKey \"seed-{index}\";\n"))
+            .collect();
+        let directory = release_fixture(
+            &[("data/seed.tql", String::new())],
+            &[("data/seed.tql", seeds)],
+        );
+        let repo_path = directory.path().join("repo");
+        let upgrade = generate_upgrade(&repo_path, "1.0.0", "1.0.1")
+            .unwrap()
+            .unwrap();
+        assert!(upgrade.is_split());
+        assert_eq!(upgrade.stages, 1100);
+        assert_eq!(upgrade.path, "migrations/v1.0.0-to-v1.0.1");
+        assert!(!repo_path.join("migrations/v1.0.0-to-v1.0.1.tql").exists());
+        assert_eq!(upgrade.files.len(), 22);
+        assert_eq!(upgrade.files[0], "migrations/v1.0.0-to-v1.0.1/0001.tql");
+        let mut seen = 0;
+        for file in &upgrade.files {
+            let text = read_text(&repo_path.join(file)).unwrap();
+            check_upgrade_unit(file, &text).unwrap();
+            seen += text.matches("isa Seed").count();
+        }
+        assert_eq!(seen, 1100);
+        crate::upgrade_limits::validate_upgrade_files(&repo_path).unwrap();
     }
 }

@@ -16,6 +16,7 @@ serde_json = { workspace = true, features = ["preserve_order"] }
 thiserror = { workspace = true }
 regex = { workspace = true }
 ring = { workspace = true }
+futures = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 typedb-driver = "~3.11.0"
 

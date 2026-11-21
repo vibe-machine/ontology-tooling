@@ -4,6 +4,7 @@ use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 
+mod check_questions;
 mod completions;
 mod corpus;
 mod diff;
@@ -41,6 +42,8 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum Command {
+    /// Run a package's competency questions against a throwaway TypeDB.
+    CheckQuestions(check_questions::CheckQuestionsArgs),
     /// Generate shell completions for the supplied shell.
     Completions {
         #[arg(value_enum)]
@@ -87,6 +90,7 @@ pub async fn run(cli: Cli) -> Result<()> {
     };
 
     match command {
+        Command::CheckQuestions(args) => check_questions::run(&cli, &args).await,
         Command::Completions { shell } => completions::run(shell),
         Command::Corpus(args) => corpus::run(&cli, &args).await,
         Command::Diff(args) => diff::run(&cli, &args),

@@ -121,6 +121,49 @@ pub fn rewrite_compatible_migration_unit_paths(
     }
 }
 
+/// Replaces every migration-plan `write` unit whose path is `single_path`
+/// with one `write` unit per path in `unit_paths`, in order. Used when a
+/// release splits its upgrade into `migrations/v<from>-to-v<to>/NNNN.tql`.
+pub fn expand_migration_write_unit(
+    package_json: &Value,
+    single_path: &str,
+    unit_paths: &[String],
+) -> Value {
+    let mut next_package_json = package_json.clone();
+    let Some(plans) = next_package_json
+        .pointer_mut("/migration/plans")
+        .and_then(Value::as_array_mut)
+    else {
+        return next_package_json;
+    };
+    for plan in plans {
+        let Some(phases) = plan.get_mut("phases").and_then(Value::as_array_mut) else {
+            continue;
+        };
+        for phase in phases {
+            let Some(units) = phase.get_mut("units").and_then(Value::as_array_mut) else {
+                continue;
+            };
+            let mut expanded = Vec::new();
+            for unit in units.drain(..) {
+                let is_target = unit.get("kind").and_then(Value::as_str) == Some("write")
+                    && unit.get("path").and_then(Value::as_str) == Some(single_path);
+                if is_target {
+                    expanded.extend(
+                        unit_paths
+                            .iter()
+                            .map(|path| json!({"kind": "write", "path": path})),
+                    );
+                } else {
+                    expanded.push(unit);
+                }
+            }
+            *units = expanded;
+        }
+    }
+    next_package_json
+}
+
 fn generated_migration_target(path: &str) -> Option<&str> {
     if path.contains(['\n', '\r']) {
         return None;
@@ -586,6 +629,38 @@ mod tests {
         assert_eq!(
             rewritten.pointer("/migration/plans/1/phases/0/units/0/path"),
             package.pointer("/migration/plans/1/phases/0/units/0/path")
+        );
+    }
+
+    #[test]
+    fn expand_migration_write_unit_replaces_the_single_file_with_ordered_units() {
+        let package = json!({"migration": {"plans": [{
+            "mode": "compatible",
+            "phases": [
+                {"id": "preflight", "units": [{"kind": "assert-data", "path": "migrations/v1.0.0-to-v1.0.1.tql"}]},
+                {"id": "migrate", "units": [
+                    {"kind": "write", "path": "migrations/v1.0.0-to-v1.0.1.tql"},
+                    {"kind": "write", "path": "data/provenance.tql"}
+                ]}
+            ]
+        }]}});
+        let units = vec![
+            "migrations/v1.0.0-to-v1.0.1/0001.tql".to_string(),
+            "migrations/v1.0.0-to-v1.0.1/0002.tql".to_string(),
+        ];
+        let expanded =
+            expand_migration_write_unit(&package, "migrations/v1.0.0-to-v1.0.1.tql", &units);
+        assert_eq!(
+            expanded.pointer("/migration/plans/0/phases/1/units"),
+            Some(&json!([
+                {"kind": "write", "path": "migrations/v1.0.0-to-v1.0.1/0001.tql"},
+                {"kind": "write", "path": "migrations/v1.0.0-to-v1.0.1/0002.tql"},
+                {"kind": "write", "path": "data/provenance.tql"}
+            ]))
+        );
+        assert_eq!(
+            expanded.pointer("/migration/plans/0/phases/0"),
+            package.pointer("/migration/plans/0/phases/0")
         );
     }
 

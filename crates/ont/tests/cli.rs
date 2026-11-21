@@ -194,6 +194,7 @@ fn help_includes_all_subcommands() {
         .stdout(contains("validate-package"))
         .stdout(contains("version"))
         .stdout(contains("split-apply-units"))
+        .stdout(contains("check-questions"))
         .stdout(contains("completions"));
 }
 

@@ -11,9 +11,12 @@ use std::process::Command;
 
 use serde_json::Value;
 
+use crate::competency_questions::validate_competency_questions;
 use crate::error::{Error, Result};
 use crate::executable_package::{validate_executable_package, APPLY_UNITS_ROOT};
 use crate::migration_contract::validate_migration_contract;
+use crate::release_integrity::{validate_listed_paths, validate_version_stamps};
+use crate::upgrade_limits::validate_upgrade_files;
 use crate::version::{SemanticVersion, VersionRange};
 
 fn invalid<S: Into<String>>(message: S) -> Error {
@@ -85,6 +88,10 @@ pub fn validate_package_contract(repo_path: &Path) -> Result<Value> {
     validate_migration_contract(repo_path)?;
     validate_previous_release_coverage(repo_path, &package)?;
     validate_executable_package(repo_path, &package)?;
+    validate_upgrade_files(repo_path)?;
+    validate_listed_paths(repo_path, &package)?;
+    validate_version_stamps(repo_path, &package)?;
+    validate_competency_questions(repo_path, &package)?;
 
     Ok(package)
 }
@@ -456,7 +463,8 @@ mod tests {
             },
             "assembly": {
                 "loadOrder": ["schema/custom.tql", "data/seed.tql", "manifests/resources.json"]
-            }
+            },
+            "competencyQuestions": { "waived": "fixture package" }
         })
     }
 
@@ -510,6 +518,78 @@ mod tests {
         let dir = create_fixture(&package, &[]);
         let validated = validate_package_contract(dir.path()).unwrap();
         assert_eq!(validated, package);
+    }
+
+    #[test]
+    fn requires_competency_questions_or_a_waiver() {
+        let mut package = base_package();
+        object_mut(&mut package).remove("competencyQuestions");
+        assert_message(
+            &package,
+            &[],
+            "package.json 'competencyQuestions' is required: set it to the questions file path \
+             (\"competency/questions.json\") or to {\"waived\": \"<reason>\"} for a package that \
+             deliberately has none",
+        );
+    }
+
+    #[test]
+    fn validates_declared_competency_questions() {
+        let mut package = base_package();
+        object_mut(&mut package).insert(
+            "competencyQuestions".to_string(),
+            json!("competency/questions.json"),
+        );
+        let questions = json!({
+            "formatVersion": 1,
+            "fixtures": [],
+            "questions": [{
+                "id": "q01", "number": 1, "group": "Things", "text": "Which things exist?",
+                "query": "queries/q01.tql"
+            }]
+        })
+        .to_string();
+        package["schemas"].as_array_mut().unwrap().insert(
+            0,
+            json!({ "name": "stored-queries", "file": "schema/stored-queries.tql" }),
+        );
+        package["data"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!("data/custom-questions.tql"));
+        package["assembly"]["loadOrder"] = json!([
+            "schema/stored-queries.tql",
+            "schema/custom.tql",
+            "data/seed.tql",
+            "data/custom-questions.tql",
+            "manifests/resources.json"
+        ]);
+        let dir = create_fixture(
+            &package,
+            &[
+                ("competency/questions.json", questions.as_str()),
+                ("queries/q01.tql", "match $x isa thing;"),
+                ("schema/stored-queries.tql", ""),
+                ("data/custom-questions.tql", ""),
+            ],
+        );
+        let Ok(crate::competency_questions::CompetencyDeclaration::Declared { path, file }) =
+            crate::competency_questions::read_declaration(dir.path(), &package)
+        else {
+            panic!("expected declared questions");
+        };
+        crate::stored_questions::write_generated(dir.path(), &package, &path, &file).unwrap();
+        validate_package_contract(dir.path()).unwrap();
+
+        write(dir.path(), "queries/q02.tql", "match $y isa thing;");
+        match validate_package_contract(dir.path()) {
+            Err(Error::Version(message)) => assert_eq!(
+                message,
+                "queries/q02.tql is not used by any competency question and is not listed in \
+                 package.json 'queries'"
+            ),
+            other => panic!("expected orphan-query error, got {other:?}"),
+        }
     }
 
     #[test]

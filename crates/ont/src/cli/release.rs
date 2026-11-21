@@ -10,15 +10,27 @@ use clap::Args;
 use serde::Serialize;
 use serde_json::Value;
 use vibe_ontology::bootstrap_uniqueness::validate_bootstrap_uniqueness;
+use vibe_ontology::competency_questions::{
+    check_release_gate, read_declaration, validate_competency_questions, write_questions_doc,
+    CompetencyDeclaration,
+};
+use vibe_ontology::stored_questions::{data_path, write_generated_from};
+
+use super::check_questions::run_and_record;
 use vibe_ontology::executable_package::prepare_executable_package;
-use vibe_ontology::migration_diff::generate_migration_diff;
+use vibe_ontology::migration_diff::generate_upgrade;
 use vibe_ontology::package_release::{
-    expected_release_commit_message, migration_preflight_assertion, migration_verify_assertion,
-    plan_package_release, release_scripts_to_run, resolve_module_repo_url,
-    rewrite_compatible_migration_unit_paths, strip_migration_metadata, ReleasePlan, Rename,
+    expand_migration_write_unit, expected_release_commit_message, migration_preflight_assertion,
+    migration_verify_assertion, plan_package_release, release_scripts_to_run,
+    resolve_module_repo_url, rewrite_compatible_migration_unit_paths, strip_migration_metadata,
+    ReleasePlan, Rename,
 };
 use vibe_ontology::package_validator::validate_package_contract;
 use vibe_ontology::release_args::{validate_release_args, ReleaseArgs as ValidatedReleaseArgs};
+use vibe_ontology::release_integrity::{
+    check_bump, previous_tag, schema_labels_at, tag_exists, validate_released,
+};
+use vibe_ontology::version::SemanticVersion;
 
 use super::{emit_json, Cli, Format};
 
@@ -122,7 +134,11 @@ fn execute_release(options: &ReleaseArgs) -> Result<ReleaseSummary> {
         };
 
         with_validation_worktree(&repo_path, |worktree_path| {
-            run_release_validation(worktree_path, None::<fn(&Path) -> Result<()>>)
+            run_release_validation(
+                worktree_path,
+                QuestionsMode::Verify,
+                None::<fn(&Path) -> Result<()>>,
+            )
         })?;
         return Ok(summary);
     }
@@ -151,6 +167,13 @@ fn execute_release(options: &ReleaseArgs) -> Result<ReleaseSummary> {
     }
 
     assert_clean_working_tree(&repo_path)?;
+    // Refuse before any file changes when the questions are malformed.
+    validate_competency_questions(&repo_path, &package_json)?;
+    // Refuse before any file changes when the bump is smaller than the schema
+    // change since the last released tag.
+    if !plan.resume_existing_version {
+        check_release_bump(&repo_path, &plan.current_version, &plan.next_version)?;
+    }
     let tag_name = summary
         .tag_name
         .as_deref()
@@ -160,64 +183,94 @@ fn execute_release(options: &ReleaseArgs) -> Result<ReleaseSummary> {
     if plan.resume_existing_version {
         assert_head_matches_release_commit(&repo_path, &package_name, &plan.next_version)?;
         with_validation_worktree(&repo_path, |worktree_path| {
-            run_release_validation(worktree_path, None::<fn(&Path) -> Result<()>>)
+            run_release_validation(
+                worktree_path,
+                QuestionsMode::Verify,
+                None::<fn(&Path) -> Result<()>>,
+            )
         })?;
     } else {
-        write_json(&package_json_path, &plan.next_package_json)?;
-        apply_rename_plan(&repo_path, &plan.rename_plan)?;
+        let mutated = (|| -> Result<()> {
+            write_json(&package_json_path, &plan.next_package_json)?;
+            apply_rename_plan(&repo_path, &plan.rename_plan)?;
 
-        run_release_validation(
-            &repo_path,
-            Some(|repo: &Path| {
-                let migration_path =
-                    generate_migration_diff(repo, &plan.current_version, &plan.next_version)?;
-                if let Some(migration_path) = migration_path {
-                    write_migration_assertions(
-                        repo,
-                        &plan.next_package_json,
-                        &plan.current_version,
-                        &plan.next_version,
-                    )?;
+            run_release_validation(
+                &repo_path,
+                QuestionsMode::Run,
+                Some(|repo: &Path| {
+                    let upgrade =
+                        generate_upgrade(repo, &plan.current_version, &plan.next_version)?;
+                    if let Some(upgrade) = upgrade {
+                        let migration_path = upgrade.path.clone();
+                        write_migration_assertions(
+                            repo,
+                            &plan.next_package_json,
+                            &plan.current_version,
+                            &plan.next_version,
+                        )?;
+                        let package_json_path = repo.join("package.json");
+                        let current_package_json = read_json(&package_json_path)?;
+                        // A split upgrade is a directory of ordered units: a
+                        // migration plan runs each as its own write unit.
+                        let single_path = format!(
+                            "migrations/v{}-to-v{}.tql",
+                            plan.current_version, plan.next_version
+                        );
+                        let mut rewritten_package_json = rewrite_compatible_migration_unit_paths(
+                            &current_package_json,
+                            &single_path,
+                            &plan.current_version,
+                            &plan.next_version,
+                        );
+                        if upgrade.is_split() {
+                            rewritten_package_json = expand_migration_write_unit(
+                                &rewritten_package_json,
+                                &single_path,
+                                &upgrade.files,
+                            );
+                        }
+                        if rewritten_package_json != current_package_json {
+                            write_json(&package_json_path, &rewritten_package_json)?;
+                        }
+                        summary.migration_diff = Some(migration_path);
+                        return Ok(());
+                    }
+
                     let package_json_path = repo.join("package.json");
                     let current_package_json = read_json(&package_json_path)?;
-                    let rewritten_package_json = rewrite_compatible_migration_unit_paths(
-                        &current_package_json,
-                        &migration_path,
-                        &plan.current_version,
-                        &plan.next_version,
-                    );
-                    if rewritten_package_json != current_package_json {
-                        write_json(&package_json_path, &rewritten_package_json)?;
+                    if current_package_json
+                        .get("migration")
+                        .is_some_and(json_truthy)
+                    {
+                        write_json(
+                            &package_json_path,
+                            &strip_migration_metadata(&current_package_json),
+                        )?;
+                        remove_path(&repo.join("migrations"))?;
+                        run_package_script(repo, "refresh:package-contract")?;
                     }
-                    summary.migration_diff = Some(migration_path);
-                    return Ok(());
-                }
+                    Ok(())
+                }),
+            )?;
 
-                let package_json_path = repo.join("package.json");
-                let current_package_json = read_json(&package_json_path)?;
-                if current_package_json
-                    .get("migration")
-                    .is_some_and(json_truthy)
-                {
-                    write_json(
-                        &package_json_path,
-                        &strip_migration_metadata(&current_package_json),
-                    )?;
-                    remove_path(&repo.join("migrations"))?;
-                    run_package_script(repo, "refresh:package-contract")?;
-                }
-                Ok(())
-            }),
-        )?;
-
-        run_command("git", ["add", "-A"], &repo_path, false)?;
-        let commit_message = expected_release_commit_message(&package_name, &plan.next_version);
-        run_command(
-            "git",
-            ["commit", "-m", commit_message.as_str()],
-            &repo_path,
-            false,
-        )?;
+            run_command("git", ["add", "-A"], &repo_path, false)?;
+            let commit_message = expected_release_commit_message(&package_name, &plan.next_version);
+            run_command(
+                "git",
+                ["commit", "-m", commit_message.as_str()],
+                &repo_path,
+                false,
+            )?;
+            Ok(())
+        })();
+        mutated.with_context(|| {
+            format!(
+                "release of {package_name} {} failed after it changed files in {}; the working \
+                 tree is left as it is (restore with `git checkout -- . && git clean -fd`)",
+                plan.next_version,
+                repo_path.display()
+            )
+        })?;
     }
 
     let tag_name = summary
@@ -225,6 +278,17 @@ fn execute_release(options: &ReleaseArgs) -> Result<ReleaseSummary> {
         .as_deref()
         .expect("release summaries always have a tag");
     run_command("git", ["tag", tag_name], &repo_path, false)?;
+
+    // The tagged release must itself validate as published: same checks the
+    // pre-push hook runs (`ont validate-package --released`).
+    validate_package_contract(&repo_path)
+        .and_then(|package| validate_released(&repo_path, &package))
+        .with_context(|| {
+            format!(
+                "release {tag_name} was committed and tagged but does not validate as released; \
+                 it was not pushed"
+            )
+        })?;
 
     if !options.no_push {
         push_release(&repo_path, tag_name)?;
@@ -316,10 +380,100 @@ fn run_package_script(repo_path: &Path, script_name: &str) -> Result<()> {
     Ok(())
 }
 
-fn run_release_validation<F>(repo_path: &Path, after_refresh: Option<F>) -> Result<()>
+/// `path` as committed at `git_ref`, or `None` when it is not there.
+fn git_show_file(repo_path: &Path, git_ref: &str, path: &str) -> Option<String> {
+    let output = Command::new("git")
+        .args(["show", &format!("{git_ref}:{path}")])
+        .current_dir(repo_path)
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Rule 4 before any change: the bump from the last released tag (the tag of
+/// the current version, else the highest tag below the next version) must be
+/// at least as large as the schema change since that tag.
+fn check_release_bump(repo_path: &Path, current: &str, next: &str) -> Result<()> {
+    let next = SemanticVersion::parse(next)?;
+    let current_tag = format!("v{current}");
+    let base = if tag_exists(repo_path, &current_tag)? {
+        Some((current_tag, SemanticVersion::parse(current)?))
+    } else {
+        previous_tag(repo_path, &next)?
+    };
+    let Some((tag, from)) = base else {
+        return Ok(());
+    };
+    let old = schema_labels_at(repo_path, Some(&tag))?;
+    let new = schema_labels_at(repo_path, None)?;
+    check_bump(&tag, &old, &new, &from, &next)?;
+    Ok(())
+}
+
+/// How a validation pass treats the competency questions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum QuestionsMode {
+    /// Releasing: run the questions on exactly what ships (after the version
+    /// bump and refresh) and write competency/last-run.json into the release.
+    Run,
+    /// Validating a committed state: competency/last-run.json must match the
+    /// committed files (checked before the refresh regenerates any of them).
+    Verify,
+}
+
+fn run_release_validation<F>(
+    repo_path: &Path,
+    questions_mode: QuestionsMode,
+    after_refresh: Option<F>,
+) -> Result<()>
 where
     F: FnOnce(&Path) -> Result<()>,
 {
+    // Verifying a committed state: check competency/last-run.json against the
+    // files as committed, before the refresh. The refresh is not reproducible
+    // (provenance records the commit and a generation time), so a digest taken
+    // after it would never match.
+    if questions_mode == QuestionsMode::Verify {
+        let committed_package = read_json(&repo_path.join("package.json"))?;
+        check_release_gate(repo_path, &committed_package)?;
+    }
+    // Releasing: regenerate the installed form of the questions after the
+    // version bump (new or changed entries are stamped with the new version)
+    // and before the refresh, which records the data files in provenance.
+    if questions_mode == QuestionsMode::Run {
+        let bumped_package = read_json(&repo_path.join("package.json"))?;
+        if let CompetencyDeclaration::Declared { path, file } =
+            read_declaration(repo_path, &bumped_package)?
+        {
+            write_questions_doc(repo_path, &bumped_package, &path, &file)?;
+            // Versions are kept relative to what the previous release shipped.
+            let next = SemanticVersion::parse(
+                bumped_package
+                    .get("version")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+            )?;
+            let name = bumped_package
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let baseline = match previous_tag(repo_path, &next)? {
+                Some((tag, _)) => git_show_file(repo_path, &tag, &data_path(name)),
+                None => None,
+            };
+            write_generated_from(
+                repo_path,
+                &bumped_package,
+                &path,
+                &file,
+                baseline.as_deref(),
+            )?;
+        }
+    }
+
     run_package_script(repo_path, "refresh:package-contract")?;
 
     if let Some(after_refresh) = after_refresh {
@@ -329,6 +483,40 @@ where
 
     let package_json = validate_package_contract(repo_path)?;
     validate_bootstrap_uniqueness(repo_path)?;
+    match read_declaration(repo_path, &package_json)? {
+        CompetencyDeclaration::Waived { reason } => {
+            eprintln!("notice: competency questions waived: {reason}");
+        }
+        CompetencyDeclaration::Declared { path, file } => match questions_mode {
+            QuestionsMode::Verify => {}
+            QuestionsMode::Run => {
+                let (run, _) = tokio::task::block_in_place(|| {
+                    tokio::runtime::Handle::current().block_on(run_and_record(
+                        repo_path,
+                        &package_json,
+                        &path,
+                        &file,
+                        None,
+                        false,
+                    ))
+                })?;
+                let failed = run
+                    .outcomes
+                    .iter()
+                    .filter(|outcome| !outcome.passed())
+                    .count();
+                if failed > 0 {
+                    bail!(
+                        "{failed} of {} competency questions failed on the release candidate",
+                        run.outcomes.len()
+                    );
+                }
+                if let Err(problem) = &run.installed {
+                    bail!("the release candidate installs its questions wrongly: {problem}");
+                }
+            }
+        },
+    }
 
     for script_name in release_scripts_to_run(&package_json) {
         if script_name == "refresh:package-contract" {

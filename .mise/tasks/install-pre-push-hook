@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+#MISE description="Add a section to an ontology repo's pre-push hook that refuses a push which does not validate as released"
+#USAGE arg "<repo>" help="Path to the ontology repository (a sibling of ontology-tooling)"
+set -euo pipefail
+
+# Adds (or replaces) a marked section in the repo's pre-push hook, wherever
+# core.hooksPath puts it (e.g. the beads-managed .beads/hooks). Other sections,
+# such as the beads integration, are left untouched.
+repo="$(cd "${usage_repo?}" && git rev-parse --show-toplevel)"
+hook="$(cd "$repo" && git rev-parse --git-path hooks/pre-push)"
+case "$hook" in
+  /*) ;;
+  *) hook="$repo/$hook" ;;
+esac
+
+begin="# --- BEGIN ONTOLOGY-TOOLING RELEASED CHECK ---"
+end="# --- END ONTOLOGY-TOOLING RELEASED CHECK ---"
+
+mkdir -p "$(dirname "$hook")"
+if [ -f "$hook" ]; then
+  kept="$(awk -v begin="$begin" -v end="$end" '
+    $0 == begin { skipping = 1; next }
+    $0 == end { skipping = 0; next }
+    !skipping { print }
+  ' "$hook")"
+else
+  kept="#!/usr/bin/env sh"
+fi
+
+{
+  printf '%s\n' "$kept"
+  cat <<SECTION
+$begin
+# Refuses a push whose tree does not validate as the version it declares:
+# content changed under a released version, stale stamps, missing or
+# hand-edited files, or a bump smaller than the schema change.
+_ont_repo="\$(git rev-parse --show-toplevel)"
+_ont="\$_ont_repo/../ontology-tooling/bin/ont"
+if [ ! -x "\$_ont" ]; then
+  echo >&2 "pre-push: \$_ont not found; run 'mise run build-ont' in ontology-tooling"
+  exit 1
+fi
+"\$_ont" --format text validate-package --released --repo "\$_ont_repo" || exit 1
+$end
+SECTION
+} > "$hook.tmp"
+mv "$hook.tmp" "$hook"
+chmod +x "$hook"
+echo "updated $hook"
