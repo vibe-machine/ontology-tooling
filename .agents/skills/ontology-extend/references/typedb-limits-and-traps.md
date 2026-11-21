@@ -7,9 +7,19 @@ Each entry: the rule, the symptom, the fix.
 **A query pipeline holds at most 1000 stages.** Every top-level `match`, `insert`, `put`,
 `delete`, `update`, `fetch`, `reduce`, `sort`, `offset`, `limit`, `select`, `require` and
 `distinct` is a stage. Symptom: `[QEX18] Query pipeline has N stages, which exceeds the maximum
-allowed 1000`. It bit a single-file upgrade (`migrations/v<from>-to-v<to>.tql`), which the app
-sends as one query. `ont validate-package` now rejects such a file; `ont release` splits an
-oversized upgrade into units (see `app-install-and-upgrade.md` for what the app does with them).
+allowed 1000`. It bit Lingo 1.0.0's single-file upgrade, which the app sends as one query.
+Upgrades now go through a migration plan of units (`app-install-and-upgrade.md`).
+
+**One query with chained, unkeyed `match` stages multiplies its rows.** Every stage runs once for
+every row the stages before it produced. A `match` not selected by a `@key` or `@unique`
+attribute matches every such record, including other packages' and every installed version's
+(records without a key pile up per version). Chain several and the counts multiply: 16 records
+then 3 runs the rest 48 times. Symptom: the query never finishes and TypeDB closes it,
+`[CXN07] The transaction is closed`, often only on a database that lived through several
+versions. Lingo 1.1.0's single upgrade file multiplied about 221,000-fold. Remedy: never ship a
+single-file upgrade; use a migration plan whose units each hold one `match`, selected by a key,
+with no `put` after it (`ont release` writes these). A clue before the failure: an answer count
+in test output far larger than the data.
 
 **A write unit holds at most 50 executable blocks and 50,000 characters.** Symptom from the
 tooling: `write unit '<path>' contains 51 executable blocks; max is 50`. `ont prepare-package
@@ -21,14 +31,21 @@ header names another version.
 
 **`define fun` cannot be repeated.** Defining a function that already exists fails with
 `[FUN5] A function with name '…' already exists`. The app redefines only changed functions when it
-reapplies a schema; anything that applies a schema file by hand (such as the manual upgrade test)
-must leave out unchanged `fun` blocks.
+reapplies a schema; the generated plan's `schema` unit leaves functions out for this reason, and
+anything that applies a schema file by hand must leave out unchanged `fun` blocks.
+
+**An upgrade unit holds one change.** `ont validate-package` refuses, in any
+`migrations/v<from>-to-v<to>/NNNN.tql`: more than one `match`; a `put` after the `match` (it
+repeats for every matched row); a `match` whose record is not selected by a `@key` or `@unique`
+attribute of a type the schemas define; and a unit over the write-unit limits or 1000 stages.
 
 ## Traps
 
 **One variable cannot be reused across `put` statements in one pipeline.** Within a pipeline a
 variable names one concept in every stage, so `put $module …; put $module …;` with different
-patterns fails. Give each statement its own variable, or split into separate queries.
+patterns fails; declared with two types (a `SchemaModule` and an `OntologyModule`, as in Lingo's
+generated `v1.0.0-to-v1.0.1.tql`) TypeDB refuses it with `INF11`. Give each statement its own
+variable, or split into separate units.
 
 **`put` with a changed non-key attribute makes a second keyed instance.** `put` matches the whole
 pattern; when any attribute differs it inserts, and the key (or `@unique`) is violated
@@ -64,6 +81,7 @@ beads attribute). Search the sibling checkouts before naming:
 annotation or `plays` in a foreign relation added to a dependency's type. Play roles only in
 relations this package declares, or make a subtype.
 
-**Data reapplied on upgrade must be idempotent.** With no migration plan or file, the app reruns
-every data file on a database that already holds it. `insert` duplicates; use `put` (key only)
-plus `update`.
+**Data must be safe to run twice.** A reinstall, the app's reconcile, and an upgrade run again
+after it stopped part-way all rerun writes on a database that already holds them. `insert`
+duplicates; use `put` (key only) plus `update`. (With neither a plan nor an upgrade file, the app
+now refuses the upgrade rather than reapplying the data files.)

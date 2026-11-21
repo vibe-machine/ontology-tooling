@@ -6,7 +6,7 @@ targets:
   - agent-skills
 dependencies:
   apm:
-    - vibe-machine/skill-cabinet/skills/ontology-extend#v1.7.0
+    - vibe-machine/skill-cabinet/skills/ontology-extend#v1.8.0
     - vibe-machine/skill-cabinet/skills/ontology-repo-layout#v0.4.0
     - vibe-machine/skill-cabinet/skills/typedb#v0.4.0
     # typeql and modeling are unmodified copies of typedb/typedb-skills.
